@@ -289,18 +289,26 @@ async function executeBridgeOperation(pk, config, walletNum) {
 
 // Execute transfer operations - updated for new config structure
 async function executeTransferOperation(tokenTransfer, pk, config, walletNum) {
-    if (config.operations?.transfer?.enabled) {
+    // Verify if transfer is enabled in config - using new config structure
+    const transferEnabled = 
+        (config.operations && config.operations.transfer && config.operations.transfer.enabled) || 
+        (config.transfer && config.transfer.enabled);
+    
+    if (transferEnabled) {
         let success = false;
         let attempt = 0;
+        const maxRetries = config.general?.max_retries || 5;
         
-        while (!success && attempt < (config.general?.max_retries || 5)) {
+        while (!success && attempt < maxRetries) {
             console.log(chalk.blue.bold(`\n=== Running Transfer Operations for Wallet ${walletNum} ===\n`));
-            console.log(chalk.blue.bold(`${getTimestamp(walletNum)} Transferring tokens... (Attempt ${attempt + 1}/${config.general?.max_retries || 5})`));
+            console.log(chalk.blue.bold(`${getTimestamp(walletNum)} Transferring tokens... (Attempt ${attempt + 1}/${maxRetries})`));
+            
+            // Transfer function already handles configuration internally
             success = await tokenTransfer.transferToSelf(pk, walletNum);
             
             if (!success) {
                 attempt++;
-                if (attempt < (config.general?.max_retries || 5)) {
+                if (attempt < maxRetries) {
                     const waitTime = Math.min(300, (config.general?.base_wait_time || 10) * (2 ** attempt));
                     console.log(chalk.yellow(`${getTimestamp(walletNum)} Waiting ${waitTime} seconds before retry...`));
                     await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
@@ -309,10 +317,12 @@ async function executeTransferOperation(tokenTransfer, pk, config, walletNum) {
         }
         
         // Add random delay after transfer operations
-        await addRandomDelay(config.general, walletNum, "next operation");
+        await addRandomDelay(config.general || {}, walletNum, "next operation");
         return success;
+    } else {
+        console.log(chalk.yellow(`${getTimestamp(walletNum)} ⚠ Transfer operations disabled in config`));
+        return false;
     }
-    return false;
 }
 
 // Execute contract deployment operations - updated for new config structure
