@@ -1,6 +1,1 @@
-# fhenix-nitrogen
-
-- Self-transfers
-- ETH bridging
-- Random contract deployment
-- Random token deployment
+# fh3nix-nitr0gen
