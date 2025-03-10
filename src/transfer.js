@@ -1,66 +1,33 @@
 const { Web3 } = require('web3');
 const chalk = require('chalk');
 const constants = require('../utils/constants');
-const { addRandomDelay, getTimestamp } = require('../utils/delayUtils');
+const { addRandomDelay, getTimestamp } = require('../utils/delay');
 
 class TokenTransfer {
     constructor(config = {}) {
         // Set default config
         this.config = {
-            operations: {
-                transfer: {
-                    enabled: true,
-                    use_percentage: true,
-                    percentage: 90,
-                    fixed_amount: {
-                        min: 0.0001,
-                        max: 0.001,
-                        decimals: 5
-                    },
-                    count: {
-                        min: 1,
-                        max: 3
-                    },
-                    repeat_times: 2
-                }
-            },
-            general: {
-                gas_price_multiplier: constants.GAS.PRICE_MULTIPLIER,
-                max_retries: 5,
-                base_wait_time: 10
+            enable_transfer: true,
+            gas_price_multiplier: constants.GAS.PRICE_MULTIPLIER,
+            transfer_amount_percentage: constants.TRANSFER.AMOUNT_PERCENTAGE,
+            // Default to 1 transfer if not specified
+            transfer_count: {
+                min: 1,
+                max: 1
             }
         };
         
         // Merge with provided config
         if (config) {
-            // Handle old config format
-            if (config.enable_transfer !== undefined) {
-                // Old format
-                this.config = {
-                    operations: {
-                        transfer: {
-                            enabled: config.enable_transfer,
-                            use_percentage: true,
-                            percentage: config.transfer_amount_percentage || 90,
-                            fixed_amount: (config.self_transfer && config.self_transfer.settings && config.self_transfer.settings.amount) ? 
-                                config.self_transfer.settings.amount : 
-                                { min: 0.0001, max: 0.001, decimals: 5 },
-                            count: config.transfer_count || { min: 1, max: 3 },
-                            repeat_times: (config.self_transfer && config.self_transfer.settings) ? 
-                                config.self_transfer.settings.repeat_times || 2 : 2
-                        }
-                    },
-                    general: {
-                        gas_price_multiplier: config.gas_price_multiplier || constants.GAS.PRICE_MULTIPLIER,
-                        max_retries: config.max_retries || 5,
-                        base_wait_time: config.base_wait_time || 10,
-                        delay: config.delay || { min_seconds: 5, max_seconds: 30 }
-                    }
-                };
-            } else if (config.operations && config.operations.transfer) {
-                // New format
-                this.config = config;
-            }
+            this.config = { 
+                ...this.config, 
+                ...config,
+                // Merge nested transfer_count object if it exists
+                transfer_count: {
+                    ...this.config.transfer_count,
+                    ...(config.transfer_count || {})
+                }
+            };
         }
         
         // Setup web3 connection - use Fhenix network from constants
@@ -102,7 +69,7 @@ class TokenTransfer {
             const networkGasPrice = await this.web3.eth.getGasPrice();
             
             // Apply base multiplier from config
-            let multiplier = this.config.general?.gas_price_multiplier || constants.GAS.PRICE_MULTIPLIER;
+            let multiplier = this.config.gas_price_multiplier || constants.GAS.PRICE_MULTIPLIER;
             
             // Apply additional multiplier for retries
             if (retryCount > 0) {
@@ -166,7 +133,11 @@ class TokenTransfer {
         }
     }
 
-    async executePercentageTransfer(privateKey, walletNum, transferNum = 1, totalTransfers = 1) {
+    async executeTransfer(privateKey, walletNum, transferNum = 1, totalTransfers = 1) {
+        if (!this.config.enable_transfer) {
+            return true;
+        }
+
         this.currentWalletNum = walletNum;
         
         try {
@@ -183,22 +154,29 @@ class TokenTransfer {
             }
 
             // Add random delay before transfer
-            await addRandomDelay(this.config.general, this.currentWalletNum, `transfer #${transferNum}/${totalTransfers}`);
+            await addRandomDelay(this.config, this.currentWalletNum, `transfer #${transferNum}/${totalTransfers}`);
 
             // Get nonce and gas price with optimizations
             const nonce = await this.getNonce(account.address);
             const gasPrice = await this.getGasPrice();
             
-            // Standard gas for a simple transfer is 21000
-            const gasLimit = 21000;
+            // Estimate gas (should be 21000 for simple transfers)
+            const txTemplate = {
+                to: account.address,
+                from: account.address,
+                data: '0x',
+                nonce: nonce,
+                chainId: constants.NETWORK.CHAIN_ID
+            };
+            
+            const gasLimit = await this.estimateGas(txTemplate) || 21000;
             
             // Calculate gas cost
             const gasCost = BigInt(gasLimit) * BigInt(gasPrice);
             
             // Calculate amount to transfer based on percentage
-            const transferPercentage = BigInt(this.config.operations.transfer.percentage);
-            // Leave more room for gas by using 95% of calculated amount
-            const transferAmount = ((balance * transferPercentage / BigInt(100)) - gasCost) * BigInt(95) / BigInt(100);
+            const transferPercentage = BigInt(this.config.transfer_amount_percentage);
+            const transferAmount = (balance * transferPercentage / BigInt(100)) - gasCost;
 
             if (transferAmount <= 0) {
                 console.log(chalk.yellow(`${getTimestamp(this.currentWalletNum)} ⚠ Balance too low to cover gas`));
@@ -207,12 +185,10 @@ class TokenTransfer {
             
             // Create the transaction
             const transaction = {
-                nonce,
-                to: account.address,
+                ...txTemplate,
                 value: transferAmount.toString(),
                 gas: gasLimit,
-                gasPrice: gasPrice,
-                chainId: constants.NETWORK.CHAIN_ID
+                gasPrice: gasPrice
             };
 
             // Sign and send transaction
@@ -235,87 +211,8 @@ class TokenTransfer {
         }
     }
 
-    async executeFixedAmountTransfer(privateKey, walletNum, transferNum = 1, totalTransfers = 1) {
-        this.currentWalletNum = walletNum;
-        
-        try {
-            if (!privateKey.startsWith('0x')) {
-                privateKey = '0x' + privateKey;
-            }
-
-            const account = this.web3.eth.accounts.privateKeyToAccount(privateKey);
-            const balance = BigInt(await this.web3.eth.getBalance(account.address));
-            
-            if (balance === BigInt(0)) {
-                console.log(chalk.yellow(`${getTimestamp(this.currentWalletNum)} ⚠ No balance to transfer`));
-                return true;
-            }
-
-            // Generate random amount
-            const fixedAmountConfig = this.config.operations.transfer.fixed_amount;
-            const min_amount = fixedAmountConfig.min;
-            const max_amount = fixedAmountConfig.max;
-            const decimals = fixedAmountConfig.decimals;
-            
-            // Generate random amount and format to specified decimals
-            const amount_eth = Number(min_amount + Math.random() * (max_amount - min_amount)).toFixed(decimals);
-            
-            // Convert to Wei for blockchain transaction
-            const amount_wei = this.web3.utils.toWei(amount_eth, 'ether');
-            
-            // Add random delay before transfer
-            await addRandomDelay(this.config.general, this.currentWalletNum, `fixed amount transfer #${transferNum}/${totalTransfers}`);
-
-            // Get nonce and gas price
-            const nonce = await this.getNonce(account.address);
-            const gasPrice = await this.getGasPrice();
-            
-            // Standard gas for a simple transfer
-            const gasLimit = 400000;
-            
-            // Calculate gas cost
-            const gasCost = BigInt(gasLimit) * BigInt(gasPrice);
-            
-            // Check if we have enough balance for amount + gas
-            if (BigInt(amount_wei) + gasCost > balance) {
-                console.log(chalk.yellow(`${getTimestamp(this.currentWalletNum)} ⚠ Balance too low for amount (${amount_eth} ${constants.NETWORK.CURRENCY_SYMBOL}) + gas`));
-                return false;
-            }
-            
-            // Create transaction
-            const transaction = {
-                nonce,
-                to: account.address,
-                value: amount_wei,
-                gas: gasLimit,
-                gasPrice: gasPrice,
-                chainId: constants.NETWORK.CHAIN_ID
-            };
-            
-            // Sign and send transaction
-            console.log(chalk.cyan(`${getTimestamp(this.currentWalletNum)} ℹ Sending fixed amount transfer #${transferNum}/${totalTransfers} of ${amount_eth} ${constants.NETWORK.CURRENCY_SYMBOL} to self`));
-            
-            // Increment nonce before sending
-            this.incrementNonce();
-            
-            const signed = await this.web3.eth.accounts.signTransaction(transaction, privateKey);
-            const receipt = await this.web3.eth.sendSignedTransaction(signed.rawTransaction);
-            
-            console.log(chalk.green(`${getTimestamp(this.currentWalletNum)} ✓ Fixed amount transfer #${transferNum}/${totalTransfers} successful`));
-            console.log(chalk.green(`${getTimestamp(this.currentWalletNum)} ✓ View transaction: ${constants.NETWORK.EXPLORER_URL}/tx/${receipt.transactionHash}`));
-            
-            return true;
-            
-        } catch (error) {
-            console.log(chalk.red(`${getTimestamp(this.currentWalletNum)} ✗ Error in fixed amount transfer #${transferNum}/${totalTransfers}: ${error.message}`));
-            return false;
-        }
-    }
-
     async transferToSelf(privateKey, walletNum = 0) {
-        // Check if transfers are enabled
-        if (!this.config.operations?.transfer?.enabled) {
-            console.log(chalk.yellow(`${getTimestamp(walletNum)} ⚠ Transfer operations are disabled in config`));
+        if (!this.config.enable_transfer) {
             return true;
         }
 
@@ -326,36 +223,134 @@ class TokenTransfer {
         console.log(chalk.blue.bold(`${getTimestamp(this.currentWalletNum)} Starting token transfer operations...`));
         
         try {
-            // Get repeat count
-            const repeat_times = this.config.operations.transfer.repeat_times || 1;
+            // Check if we have self_transfer config with min/max amounts
+            let useRandomAmount = false;
+            let min_amount, max_amount, decimals;
             
-            // Determine transfer method
-            const usePercentage = this.config.operations.transfer.use_percentage || false;
-            
-            console.log(chalk.cyan(`${getTimestamp(this.currentWalletNum)} ℹ Will perform ${repeat_times} self-transfers using ${usePercentage ? 'percentage' : 'fixed amount'} method`));
-            
-            let successCount = 0;
-            for (let i = 1; i <= repeat_times; i++) {
-                let success;
-                
-                if (usePercentage) {
-                    success = await this.executePercentageTransfer(privateKey, walletNum, i, repeat_times);
-                } else {
-                    success = await this.executeFixedAmountTransfer(privateKey, walletNum, i, repeat_times);
-                }
-                
-                if (success) {
-                    successCount++;
-                }
-                
-                // Add delay between transfers if not the last one
-                if (i < repeat_times) {
-                    await addRandomDelay(this.config.general, this.currentWalletNum, `next transfer (${i+1}/${repeat_times})`);
+            if (this.config.self_transfer && this.config.self_transfer.enabled) {
+                const settings = this.config.self_transfer.settings;
+                if (settings && settings.amount) {
+                    useRandomAmount = true;
+                    min_amount = settings.amount.min;
+                    max_amount = settings.amount.max;
+                    decimals = settings.amount.decimals || 7;
                 }
             }
             
-            console.log(chalk.green(`${getTimestamp(this.currentWalletNum)} ✓ Self-transfer operations completed: ${successCount}/${repeat_times} successful transfers`));
-            return successCount > 0;
+            // If using self_transfer with random amounts
+            if (useRandomAmount) {
+                if (!privateKey.startsWith('0x')) {
+                    privateKey = '0x' + privateKey;
+                }
+                
+                const account = this.web3.eth.accounts.privateKeyToAccount(privateKey);
+                
+                // Get repeat count
+                const repeat_times = this.config.self_transfer.settings.repeat_times || 1;
+                
+                console.log(chalk.cyan(`${getTimestamp(this.currentWalletNum)} ℹ Will perform ${repeat_times} self-transfers with random amounts...`));
+                
+                let successCount = 0;
+                for (let i = 1; i <= repeat_times; i++) {
+                    // Generate random amount
+                    const amount_eth = Number(min_amount + Math.random() * (max_amount - min_amount)).toFixed(decimals);
+                    const amount_wei = this.web3.utils.toWei(amount_eth, 'ether');
+                    
+                    // Check balance
+                    const balance = BigInt(await this.web3.eth.getBalance(account.address));
+                    if (balance < BigInt(amount_wei)) {
+                        console.log(chalk.yellow(`${getTimestamp(this.currentWalletNum)} ⚠ Insufficient balance for self-transfer of ${amount_eth} ${constants.NETWORK.CURRENCY_SYMBOL}`));
+                        continue;
+                    }
+                    
+                    // Add random delay before transfer
+                    await addRandomDelay(this.config, this.currentWalletNum, `random amount transfer #${i}/${repeat_times}`);
+                    
+                    // Get nonce and gas price with optimizations
+                    const nonce = await this.getNonce(account.address);
+                    const gasPrice = await this.getGasPrice();
+                    
+                    // Calculate gas cost
+                    const gasLimit = 40000; // Standard for simple transfers
+                    const gasCost = BigInt(gasLimit) * BigInt(gasPrice);
+                    
+                    // Ensure amount + gas doesn't exceed balance
+                    if (BigInt(amount_wei) + gasCost > balance) {
+                        console.log(chalk.yellow(`${getTimestamp(this.currentWalletNum)} ⚠ Balance too low for transfer amount + gas`));
+                        continue;
+                    }
+                    
+                    // Create transaction
+                    const transaction = {
+                        nonce,
+                        to: account.address,
+                        value: amount_wei,
+                        gas: gasLimit,
+                        gasPrice: gasPrice,
+                        chainId: constants.NETWORK.CHAIN_ID
+                    };
+                    
+                    // Sign and send transaction
+                    console.log(chalk.cyan(`${getTimestamp(this.currentWalletNum)} ℹ Sending transfer #${i}/${repeat_times} of ${amount_eth} ${constants.NETWORK.CURRENCY_SYMBOL} to self`));
+                    
+                    // Increment nonce before sending
+                    this.incrementNonce();
+                    
+                    const signed = await this.web3.eth.accounts.signTransaction(transaction, privateKey);
+                    const receipt = await this.web3.eth.sendSignedTransaction(signed.rawTransaction);
+                    
+                    console.log(chalk.green(`${getTimestamp(this.currentWalletNum)} ✓ Transfer #${i}/${repeat_times} successful`));
+                    console.log(chalk.green(`${getTimestamp(this.currentWalletNum)} ✓ View transaction: ${constants.NETWORK.EXPLORER_URL}/tx/${receipt.transactionHash}`));
+                    
+                    successCount++;
+                    
+                    // Add delay between transfers if not the last one
+                    if (i < repeat_times) {
+                        await addRandomDelay(this.config, this.currentWalletNum, `next self-transfer (${i+1}/${repeat_times})`);
+                    }
+                }
+                
+                console.log(chalk.green(`${getTimestamp(this.currentWalletNum)} ✓ Self-transfer operations completed: ${successCount}/${repeat_times} successful transfers`));
+                return successCount > 0;
+                
+            } else {
+                // Use original percentage-based approach
+                // Get transfer count from config
+                let minTransfers = 1;
+                let maxTransfers = 1;
+                
+                if (this.config.transfer_count) {
+                    if (typeof this.config.transfer_count === 'object') {
+                        // Using min/max format
+                        minTransfers = Math.max(1, this.config.transfer_count.min || 1);
+                        maxTransfers = Math.max(minTransfers, this.config.transfer_count.max || 1);
+                    } else {
+                        // Using direct value format
+                        minTransfers = maxTransfers = this.config.transfer_count;
+                    }
+                }
+                
+                // Determine random transfer count between min and max
+                const transferCount = Math.floor(Math.random() * (maxTransfers - minTransfers + 1)) + minTransfers;
+                
+                console.log(chalk.cyan(`${getTimestamp(this.currentWalletNum)} ℹ Will perform ${transferCount} self-transfers (min: ${minTransfers}, max: ${maxTransfers})...`));
+                
+                let successCount = 0;
+                for (let i = 1; i <= transferCount; i++) {
+                    const success = await this.executeTransfer(privateKey, walletNum, i, transferCount);
+                    if (success) {
+                        successCount++;
+                    }
+                    
+                    // Add delay between transfers if not the last one
+                    if (i < transferCount) {
+                        await addRandomDelay(this.config, this.currentWalletNum, `next transfer (${i+1}/${transferCount})`);
+                    }
+                }
+                
+                console.log(chalk.green(`${getTimestamp(this.currentWalletNum)} ✓ Self-transfer operations completed: ${successCount}/${transferCount} successful transfers`));
+                return successCount > 0;
+            }
             
         } catch (error) {
             console.log(chalk.red(`${getTimestamp(this.currentWalletNum)} ✗ Error in transfer operations: ${error.message}`));
