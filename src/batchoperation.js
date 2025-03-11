@@ -32,10 +32,10 @@ class BatchOperationManager {
             console.log(chalk.cyan(`${getTimestamp()} ℹ Batch operations config: min=${this.config.operations_per_batch.min}, max=${this.config.operations_per_batch.max}`));
         }
         
-        // Also include the delay config from the main config
-        if (config.delay) {
-            this.config.delay = config.delay;
-        }
+        // Extract delay configuration consistently
+        this.delayConfig = (config.general && config.general.delay) ? config.general.delay :
+                           (config.delay) ? config.delay :
+                           { min_seconds: constants.DELAY.MIN_SECONDS, max_seconds: constants.DELAY.MAX_SECONDS };
         
         // Setup web3 connection
         this.rpcUrl = constants.NETWORK.RPC_URL;
@@ -311,7 +311,7 @@ class BatchOperationManager {
             const compiledContract = await this.compileBatchProcessor();
             
             // Add random delay before deployment
-            await addRandomDelay(this.config, this.walletNum, "batch processor deployment");
+            await addRandomDelay(this.delayConfig, this.walletNum, "batch processor deployment");
             
             console.log(chalk.cyan(`${getTimestamp(this.walletNum)} ℹ Deploying BatchProcessor contract...`));
             
@@ -388,7 +388,7 @@ class BatchOperationManager {
             const testValue = Math.floor(Math.random() * 100) + 1;
             
             // Add random delay before operation
-            await addRandomDelay(this.config, this.walletNum, "individual operation test");
+            await addRandomDelay(this.delayConfig, this.walletNum, "individual operation test");
             
             // Prepare the setValue transaction
             const setValueTx = contract.methods.setValue(testValue);
@@ -505,7 +505,7 @@ class BatchOperationManager {
             console.log(chalk.cyan(`${getTimestamp(this.walletNum)} ℹ Executing batch operations: ${batchOperations.join(', ')}...`));
             
             // Add random delay before batch execution
-            await addRandomDelay(this.config, this.walletNum, "batch execution");
+            await addRandomDelay(this.delayConfig, this.walletNum, "batch execution");
             
             // Create contract instance
             const contract = new this.web3.eth.Contract(abi, contractAddress);
@@ -589,7 +589,7 @@ class BatchOperationManager {
                 
                 // Add random delay between batches if not the last one
                 if (i < numBatches - 1) {
-                    await addRandomDelay(this.config, this.walletNum, `next batch (${i + 2}/${numBatches})`);
+                    await addRandomDelay(this.delayConfig, this.walletNum, `next batch (${i + 2}/${numBatches})`);
                 }
             }
             

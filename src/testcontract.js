@@ -33,10 +33,10 @@ class ContractTesterManager {
             console.log(chalk.cyan(`${getTimestamp()} ℹ Contract testing iterations config: min=${this.config.iterations.min}, max=${this.config.iterations.max}`));
         }
         
-        // Also include the delay config from the main config
-        if (config.delay) {
-            this.config.delay = config.delay;
-        }
+        // Extract delay configuration consistently
+        this.delayConfig = (config.general && config.general.delay) ? config.general.delay :
+                           (config.delay) ? config.delay :
+                           { min_seconds: constants.DELAY.MIN_SECONDS, max_seconds: constants.DELAY.MAX_SECONDS };
         
         // Setup web3 connection
         this.rpcUrl = constants.NETWORK.RPC_URL;
@@ -210,8 +210,8 @@ class ContractTesterManager {
             // Compile the contract
             const compiledContract = await this.compileTestContract();
             
-            // Add random delay before deployment
-            await addRandomDelay(this.config, this.walletNum, "test contract deployment");
+            // Add random delay before deployment - UPDATED to use delayConfig
+            await addRandomDelay(this.delayConfig, this.walletNum, "test contract deployment");
             
             console.log(chalk.cyan(`${getTimestamp(this.walletNum)} ℹ Deploying parameter tester contract...`));
             
@@ -329,8 +329,8 @@ class ContractTesterManager {
                 // Select a random test value
                 const value = testValues[Math.floor(Math.random() * testValues.length)];
                 
-                // Add random delay before test
-                await addRandomDelay(this.config, this.walletNum, `parameter test ${i+1}/${iterations}`);
+                // Add random delay before test - UPDATED to use delayConfig
+                await addRandomDelay(this.delayConfig, this.walletNum, `parameter test ${i+1}/${iterations}`);
                 
                 console.log(chalk.cyan(`${getTimestamp(this.walletNum)} ℹ Testing parameter value: ${value} (${i+1}/${iterations})...`));
                 
@@ -475,8 +475,8 @@ class ContractTesterManager {
                 // Generate a random value for the operation
                 const value = Math.floor(Math.random() * 100) + 1;
                 
-                // Add random delay before test
-                await addRandomDelay(this.config, this.walletNum, `stress test ${i+1}/${iterations}`);
+                // Add random delay before test - UPDATED to use delayConfig
+                await addRandomDelay(this.delayConfig, this.walletNum, `stress test ${i+1}/${iterations}`);
                 
                 console.log(chalk.cyan(`${getTimestamp(this.walletNum)} ℹ Stress test: ${operation.name}(${value}) (${i+1}/${iterations})...`));
                 
@@ -570,8 +570,8 @@ class ContractTesterManager {
             for (let i = 0; i < boundaryValues.length; i++) {
                 const value = boundaryValues[i];
                 
-                // Add random delay before test
-                await addRandomDelay(this.config, this.walletNum, `boundary test ${i+1}/${boundaryValues.length}`);
+                // Add random delay before test - UPDATED to use delayConfig
+                await addRandomDelay(this.delayConfig, this.walletNum, `boundary test ${i+1}/${boundaryValues.length}`);
                 
                 console.log(chalk.cyan(`${getTimestamp(this.walletNum)} ℹ Boundary test: setValue(${value}) (${i+1}/${boundaryValues.length})...`));
                 

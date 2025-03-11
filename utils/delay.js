@@ -24,9 +24,26 @@ function getTimestamp(walletNum = null) {
  */
 async function addRandomDelay(config, walletNum, operationName = 'next transaction') {
     try {
-        // Get min and max delay from config or use defaults
-        const minDelay = config?.delay?.min_seconds || constants.DELAY.MIN_SECONDS;
-        const maxDelay = config?.delay?.max_seconds || constants.DELAY.MAX_SECONDS;
+        // Extract delay settings from various possible config formats
+        let minDelay, maxDelay;
+        
+        if (config.min_seconds !== undefined && config.max_seconds !== undefined) {
+            // Direct delay object passed
+            minDelay = config.min_seconds;
+            maxDelay = config.max_seconds;
+        } else if (config.delay && config.delay.min_seconds !== undefined && config.delay.max_seconds !== undefined) {
+            // Config with delay property 
+            minDelay = config.delay.min_seconds;
+            maxDelay = config.delay.max_seconds;
+        } else if (config.general && config.general.delay) {
+            // Config with general.delay property
+            minDelay = config.general.delay.min_seconds;
+            maxDelay = config.general.delay.max_seconds;
+        } else {
+            // Default fallback
+            minDelay = constants.DELAY.MIN_SECONDS;
+            maxDelay = constants.DELAY.MAX_SECONDS;
+        }
         
         // Generate random delay within the specified range
         const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;

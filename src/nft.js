@@ -25,10 +25,10 @@ class NFTManager {
         // Load configuration
         this.config = { ...this.defaultConfig, ...config.nft };
         
-        // Also include the delay config from the main config
-        if (config.delay) {
-            this.config.delay = config.delay;
-        }
+        // Extract delay configuration consistently
+        this.delayConfig = (config.general && config.general.delay) ? config.general.delay :
+                           (config.delay) ? config.delay :
+                           { min_seconds: constants.DELAY.MIN_SECONDS, max_seconds: constants.DELAY.MAX_SECONDS };
         
         // Setup web3 connection
         this.rpcUrl = constants.NETWORK.RPC_URL;
@@ -223,9 +223,9 @@ class NFTManager {
             console.log(chalk.cyan(`${getTimestamp(this.walletNum)} ℹ Compiling NFT contract...`));
             const compiledContract = await this.compileContract(solContractName);
             
-            // Add random delay before deployment
+            // Add random delay before deployment - UPDATED to use delayConfig
             spinner.stop();
-            await addRandomDelay(this.config, this.walletNum, "NFT contract deployment");
+            await addRandomDelay(this.delayConfig, this.walletNum, "NFT contract deployment");
             spinner.start(`Deploying NFT contract "${contractName}" (${symbol})...`);
             
             // Create contract instance for deployment
@@ -336,8 +336,8 @@ class NFTManager {
     
     async mintNFT(contractAddress, abi, tokenId, tokenURI) {
         try {
-            // Add random delay before minting
-            await addRandomDelay(this.config, this.walletNum, `NFT minting (token #${tokenId})`);
+            // Add random delay before minting - UPDATED to use delayConfig
+            await addRandomDelay(this.delayConfig, this.walletNum, `NFT minting (token #${tokenId})`);
             
             // Create contract instance
             const contract = new this.web3.eth.Contract(abi, contractAddress);
@@ -394,8 +394,8 @@ class NFTManager {
     
     async burnNFT(contractAddress, abi, tokenId) {
         try {
-            // Add random delay before burning
-            await addRandomDelay(this.config, this.walletNum, `NFT burning (token #${tokenId})`);
+            // Add random delay before burning - UPDATED to use delayConfig
+            await addRandomDelay(this.delayConfig, this.walletNum, `NFT burning (token #${tokenId})`);
             
             // Create contract instance
             const contract = new this.web3.eth.Contract(abi, contractAddress);

@@ -24,6 +24,11 @@ class ContractDeployer {
         // Load configuration, merging with defaults
         this.config = { ...this.defaultConfig, ...config };
         
+        // Extract delay configuration consistently
+        this.delayConfig = (config.general && config.general.delay) ? config.general.delay :
+                           (config.delay) ? config.delay :
+                           { min_seconds: constants.DELAY.MIN_SECONDS, max_seconds: constants.DELAY.MAX_SECONDS };
+        
         // Setup web3 connection
         this.rpcUrl = constants.NETWORK.RPC_URL;
         this.web3 = new Web3(this.rpcUrl);
@@ -292,8 +297,8 @@ class ContractDeployer {
                     throw new Error(`Unknown interaction type: ${interactionType}`);
             }
             
-            // Add random delay before this transaction
-            await addRandomDelay(this.config, this.walletNum, `contract interaction (${interactionType})`);
+            // Add random delay before this transaction - UPDATED to use delayConfig
+            await addRandomDelay(this.delayConfig, this.walletNum, `contract interaction (${interactionType})`);
             
             // Get nonce and gas price with optimizations
             const nonce = await this.getNonce();
@@ -359,8 +364,8 @@ class ContractDeployer {
             console.log(chalk.cyan(`${getTimestamp(this.walletNum)} ℹ Compiling smart contract...`));
             const compiledContract = await this.compileContract();
             
-            // Add random delay before contract deployment
-            await addRandomDelay(this.config, this.walletNum, "contract deployment");
+            // Add random delay before contract deployment - UPDATED to use delayConfig
+            await addRandomDelay(this.delayConfig, this.walletNum, "contract deployment");
             
             // Step 2: Deploy the contract
             console.log(chalk.cyan(`${getTimestamp(this.walletNum)} ℹ Deploying smart contract...`));

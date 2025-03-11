@@ -273,7 +273,7 @@ async function executeBridgeOperation(pk, config, walletNum) {
             // Execute bridge operations
             await bridgeManager.executeBridgeOperations();
             
-            // Add random delay after bridge operations
+            // Add random delay after bridge operations - using the delay config from general section
             await addRandomDelay(config.general, walletNum, "next operation");
             
             return true;
@@ -316,8 +316,8 @@ async function executeTransferOperation(tokenTransfer, pk, config, walletNum) {
             }
         }
         
-        // Add random delay after transfer operations
-        await addRandomDelay(config.general || {}, walletNum, "next operation");
+        // Add random delay after transfer operations - using the delay config from general section
+        await addRandomDelay(config.general, walletNum, "next operation");
         return success;
     } else {
         console.log(chalk.yellow(`${getTimestamp(walletNum)} ⚠ Transfer operations disabled in config`));
@@ -338,7 +338,7 @@ async function executeContractOperation(pk, config, walletNum) {
             // Execute contract operations (compile, deploy, interact)
             await contractDeployer.executeContractOperations();
             
-            // Add random delay after contract operations
+            // Add random delay after contract operations - using the delay config from general section
             await addRandomDelay(config.general, walletNum, "next operation");
             
             return true;
@@ -363,7 +363,7 @@ async function executeERC20Operation(pk, config, walletNum) {
             // Execute ERC20 token operations (compile, deploy, mint, burn)
             await erc20Deployer.executeTokenOperations();
             
-            // Add random delay after ERC20 operations
+            // Add random delay after ERC20 operations - using the delay config from general section
             await addRandomDelay(config.general, walletNum, "next operation");
             
             return true;
@@ -388,7 +388,7 @@ async function executeNFTOperation(pk, config, walletNum) {
             // Execute NFT operations (compile, deploy, mint, burn)
             await nftManager.executeNFTOperations();
             
-            // Add random delay after NFT operations
+            // Add random delay after NFT operations - using the delay config from general section
             await addRandomDelay(config.general, walletNum, "completing wallet operations");
             
             return true;
@@ -413,7 +413,7 @@ async function executeContractTestingOperation(pk, config, walletNum) {
             // Execute contract testing operations
             await contractTesterManager.executeContractTestingOperations();
             
-            // Add random delay after contract testing operations
+            // Add random delay after contract testing operations - using the delay config from general section
             await addRandomDelay(config.general, walletNum, "next operation");
             
             return true;
@@ -438,7 +438,7 @@ async function executeBatchOperation(pk, config, walletNum) {
             // Execute batch operations
             await batchOperationManager.executeBatchOperationOperations();
             
-            // Add random delay after batch operations
+            // Add random delay after batch operations - using the delay config from general section
             await addRandomDelay(config.general, walletNum, "next operation");
             
             return true;

@@ -21,10 +21,10 @@ class ERC20TokenDeployer {
         // Load configuration
         this.config = { ...this.defaultConfig, ...config.erc20 };
         
-        // Also include the delay config from the main config
-        if (config.delay) {
-            this.config.delay = config.delay;
-        }
+        // Extract delay configuration consistently
+        this.delayConfig = (config.general && config.general.delay) ? config.general.delay :
+                           (config.delay) ? config.delay :
+                           { min_seconds: constants.DELAY.MIN_SECONDS, max_seconds: constants.DELAY.MAX_SECONDS };
         
         // Setup web3 connection
         this.rpcUrl = constants.NETWORK.RPC_URL;
@@ -226,9 +226,9 @@ class ERC20TokenDeployer {
             console.log(chalk.cyan(`${getTimestamp(this.walletNum)} ℹ Compiling ERC20 contract...`));
             const compiledContract = await this.compileContract(solContractName);
             
-            // Add random delay before deployment
+            // Add random delay before deployment - UPDATED to use delayConfig
             spinner.stop();
-            await addRandomDelay(this.config, this.walletNum, "ERC20 contract deployment");
+            await addRandomDelay(this.delayConfig, this.walletNum, "ERC20 contract deployment");
             spinner.start(`Deploying ERC20 contract "${contractName}" (${symbol})...`);
             
             // Create contract instance for deployment
@@ -295,7 +295,7 @@ class ERC20TokenDeployer {
             throw error;
         }
     }
-    
+
     formatTokenAmount(amount, decimals) {
         // Convert normal amount to token amount with decimals (e.g., 100 -> 100000000000000000000 for 18 decimals)
         return BigInt(amount) * BigInt(10) ** BigInt(decimals);
@@ -303,8 +303,8 @@ class ERC20TokenDeployer {
     
     async mintTokens(contractAddress, abi, amount, decimals) {
         try {
-            // Add random delay before minting
-            await addRandomDelay(this.config, this.walletNum, "token minting");
+            // Add random delay before minting - UPDATED to use delayConfig
+            await addRandomDelay(this.delayConfig, this.walletNum, "token minting");
             
             // Create contract instance
             const contract = new this.web3.eth.Contract(abi, contractAddress);
@@ -365,8 +365,8 @@ class ERC20TokenDeployer {
     
     async burnTokens(contractAddress, abi, amount, decimals) {
         try {
-            // Add random delay before burning
-            await addRandomDelay(this.config, this.walletNum, "token burning");
+            // Add random delay before burning - UPDATED to use delayConfig
+            await addRandomDelay(this.delayConfig, this.walletNum, "token burning");
             
             // Create contract instance
             const contract = new this.web3.eth.Contract(abi, contractAddress);

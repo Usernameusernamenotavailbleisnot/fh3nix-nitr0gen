@@ -23,32 +23,21 @@ class Bridge {
                 ...this.defaultConfig, 
                 ...config.operations.bridge 
             };
-            
-            // Get delay from general section
-            this.delayConfig = config.general?.delay || { 
-                min_seconds: constants.DELAY.MIN_SECONDS, 
-                max_seconds: constants.DELAY.MAX_SECONDS 
-            };
         } else if (config.bridge) {
             // Old format
             this.config = { 
                 ...this.defaultConfig, 
                 ...config.bridge 
             };
-            
-            // Add delay config if available
-            this.delayConfig = config.delay || { 
-                min_seconds: constants.DELAY.MIN_SECONDS, 
-                max_seconds: constants.DELAY.MAX_SECONDS 
-            };
         } else {
             // No bridge config found, use defaults
             this.config = this.defaultConfig;
-            this.delayConfig = { 
-                min_seconds: constants.DELAY.MIN_SECONDS, 
-                max_seconds: constants.DELAY.MAX_SECONDS 
-            };
         }
+        
+        // Extract delay configuration consistently
+        this.delayConfig = (config.general && config.general.delay) ? config.general.delay :
+                           (config.delay) ? config.delay :
+                           { min_seconds: constants.DELAY.MIN_SECONDS, max_seconds: constants.DELAY.MAX_SECONDS };
         
         // Setup web3 connections for both networks
         this.w3_sepolia = new Web3(constants.SEPOLIA.RPC_URL);
@@ -161,7 +150,7 @@ class Bridge {
             
             console.log(chalk.cyan(`${getTimestamp(this.walletNum)} 🌉 Starting bridge of ${amount_eth} ETH...`));
             
-            // Add random delay before bridging
+            // Add random delay before bridging - UPDATED to use delayConfig
             await addRandomDelay(this.delayConfig, this.walletNum, "bridge operation");
             
             // Prepare transaction

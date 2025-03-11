@@ -11,15 +11,15 @@
     },
     "transfer": {
       "enabled": true,
-      "use_percentage": true,
+      "use_percentage": false,
       "percentage": 90,
       "fixed_amount": {
         "min": 0.001,
-        "max": 0.001,
+        "max": 0.002,
         "decimals": 5
       },
       "count": {
-        "min": 1,
+        "min": 2,
         "max": 3
       },
       "repeat_times": 2
@@ -88,16 +88,16 @@
   },
   "general": {
     "gas_price_multiplier": 1.2,
-    "max_retries": 5,
-    "base_wait_time": 5,
+    "max_retries": 1,
+    "base_wait_time": 1,
     "delay": {
-      "min_seconds": 5,
-      "max_seconds": 30
+      "min_seconds": 1,
+      "max_seconds": 1
     }
   },
   "randomization": {
     "enable": true,
-    "excluded_operations": ["bridge"],
+    "excluded_operations": [],
     "operations_to_run": ["bridge", "transfer", "contract_deploy", "contract_testing", "erc20", "nft", "batch_operations", "random_contract", "random_token"]
   }
 }

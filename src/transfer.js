@@ -1,4 +1,3 @@
-// Updated transfer.js file
 const { Web3 } = require('web3');
 const chalk = require('chalk');
 const constants = require('../utils/constants');
@@ -30,29 +29,21 @@ class TokenTransfer {
                 ...this.defaultConfig, 
                 ...config.operations.transfer 
             };
-            
-            // Get delay from general section if available
-            if (config.general && config.general.delay) {
-                this.config.delay = config.general.delay;
-            }
         } else if (config.transfer) {
             // Alternative format
             this.config = { 
                 ...this.defaultConfig, 
                 ...config.transfer 
             };
-            
-            // Add delay config if available
-            if (config.delay) {
-                this.config.delay = config.delay;
-            }
         } else {
-            // Fallback to defaults with any available delay config
+            // Fallback to defaults
             this.config = this.defaultConfig;
-            if (config.delay) {
-                this.config.delay = config.delay;
-            }
         }
+        
+        // Extract delay configuration consistently
+        this.delayConfig = (config.general && config.general.delay) ? config.general.delay :
+                           (config.delay) ? config.delay :
+                           { min_seconds: constants.DELAY.MIN_SECONDS, max_seconds: constants.DELAY.MAX_SECONDS };
         
         // Setup web3 connection - use Fhenix network from constants
         this.web3 = new Web3(constants.NETWORK.RPC_URL);
@@ -178,8 +169,8 @@ class TokenTransfer {
                 return true;
             }
 
-            // Add random delay before transfer
-            await addRandomDelay(this.config, this.currentWalletNum, `transfer #${transferNum}/${totalTransfers}`);
+            // Add random delay before transfer - UPDATED to use delayConfig
+            await addRandomDelay(this.delayConfig, this.currentWalletNum, `transfer #${transferNum}/${totalTransfers}`);
 
             // Get nonce and gas price with optimizations
             const nonce = await this.getNonce(account.address);
@@ -303,14 +294,14 @@ class TokenTransfer {
                     
                     // Add delay between transfers if not the last one
                     if (i < transferCount) {
-                        await addRandomDelay(this.config, this.currentWalletNum, `next transfer (${i+1}/${transferCount})`);
+                        await addRandomDelay(this.delayConfig, this.currentWalletNum, `next transfer (${i+1}/${transferCount})`);
                     }
                 }
                 
                 // Add delay between repeat cycles if not the last one
                 if (r < repeatTimes - 1) {
                     console.log(chalk.cyan(`${getTimestamp(this.currentWalletNum)} ℹ Completed repeat cycle ${r+1}/${repeatTimes}`));
-                    await addRandomDelay(this.config, this.currentWalletNum, `next repeat cycle (${r+2}/${repeatTimes})`);
+                    await addRandomDelay(this.delayConfig, this.currentWalletNum, `next repeat cycle (${r+2}/${repeatTimes})`);
                     
                     // Reset nonce for next cycle to ensure we get the latest network nonce
                     this.currentNonce = null;
