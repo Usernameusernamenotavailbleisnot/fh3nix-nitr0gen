@@ -97,7 +97,7 @@
   },
   "randomization": {
     "enable": true,
-    "excluded_operations": [],
+    "excluded_operations": ["bridge"],
     "operations_to_run": ["bridge", "transfer", "contract_deploy", "contract_testing", "erc20", "nft", "batch_operations", "random_contract", "random_token"]
   }
 }
