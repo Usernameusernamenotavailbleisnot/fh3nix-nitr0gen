@@ -2,7 +2,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const chalk = require('chalk');
-const Logger = require('./src/utils/logger');
+const logger = require('./src/utils/logger');
 const ConfigManager = require('./src/managers/ConfigManager');
 const { addRandomDelay } = require('./src/utils/delay');
 
@@ -14,9 +14,6 @@ const NFT = require('./src/operations/nft');
 const TestContract = require('./src/operations/testcontract');
 const BatchOperation = require('./src/operations/batchoperation');
 const Bridge = require('./src/operations/bridge');
-
-// Initialize logger
-const logger = new Logger();
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
@@ -131,13 +128,92 @@ async function loadConfig() {
         return {
             // Default configuration here (same as above)
             operations: {
-                // ...
+                // Copy of above default
+                bridge: {
+                    enabled: false,
+                    amount: {
+                        min: 0.0001,
+                        max: 0.0004,
+                        decimals: 7
+                    },
+                    repeat_times: 1
+                },
+                transfer: {
+                    enabled: true,
+                    use_percentage: true,
+                    percentage: 90,
+                    fixed_amount: {
+                        min: 0.0001,
+                        max: 0.001,
+                        decimals: 5
+                    },
+                    count: {
+                        min: 1,
+                        max: 3
+                    },
+                    repeat_times: 2
+                },
+                contract_deploy: {
+                    enabled: true,
+                    interactions: {
+                        enabled: true,
+                        count: {
+                            min: 3,
+                            max: 8
+                        },
+                        types: ["setValue", "increment", "decrement", "reset", "contribute"]
+                    }
+                },
+                erc20: {
+                    enabled: true,
+                    mint_amount: {
+                        min: 1000000,
+                        max: 10000000
+                    },
+                    burn_percentage: 10,
+                    decimals: 18
+                },
+                nft: {
+                    enabled: true,
+                    mint_count: {
+                        min: 2,
+                        max: 5
+                    },
+                    burn_percentage: 20,
+                    supply: {
+                        min: 100,
+                        max: 500
+                    }
+                },
+                contract_testing: {
+                    enabled: true,
+                    test_sequences: ["parameter_variation", "stress_test", "boundary_test"],
+                    iterations: {
+                        min: 2,
+                        max: 3
+                    }
+                },
+                batch_operations: {
+                    enabled: true,
+                    operations_per_batch: {
+                        min: 2,
+                        max: 3
+                    }
+                }
             },
             general: {
-                // ...
+                gas_price_multiplier: 1.2,
+                max_retries: 5,
+                base_wait_time: 10,
+                delay: {
+                    min_seconds: 5,
+                    max_seconds: 30
+                }
             },
             randomization: {
-                // ...
+                enable: true,
+                excluded_operations: [],
+                operations_to_run: ["bridge", "transfer", "contract_deploy", "contract_testing", "erc20", "nft", "batch_operations"]
             }
         };
     }
@@ -160,6 +236,10 @@ async function loadProxies() {
 async function countdownTimer(hours = 8) {
     const totalSeconds = hours * 3600;
     let remainingSeconds = totalSeconds;
+    
+    // Reset logger to global/system context for countdown
+    logger.setWalletNum(null);
+    const countdownLogger = logger.getInstance();
 
     while (remainingSeconds > 0) {
         const hours = Math.floor(remainingSeconds / 3600);
@@ -170,7 +250,7 @@ async function countdownTimer(hours = 8) {
         process.stdout.clearLine(0);
         process.stdout.cursorTo(0);
         process.stdout.write(
-            chalk.blue(`${logger.getTimestamp()} Next cycle in: `) + 
+            chalk.blue(`${countdownLogger.getTimestamp()} Next cycle in: `) + 
             chalk.yellow(`${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`)
         );
 
@@ -181,16 +261,19 @@ async function countdownTimer(hours = 8) {
     // Clear the countdown line
     process.stdout.clearLine(0);
     process.stdout.cursorTo(0);
-    logger.success(`Countdown completed!`);
+    countdownLogger.success(`Countdown completed!`);
 }
 
 // Execute bridge operation using Bridge module
 async function executeBridgeOperation(pk, config, walletNum) {
+    // Always set wallet number before any logging
+    logger.setWalletNum(walletNum);
+    const walletLogger = logger.getInstance(walletNum);
+    
     // Check if bridge is enabled in config
-    const configManager = new ConfigManager(config);
+    const configManager = new ConfigManager(config, {}, walletNum);
     if (!configManager.isEnabled('bridge')) {
-        logger.setWalletNum(walletNum);
-        logger.warn(`Bridge operations disabled in config`);
+        walletLogger.warn(`Bridge operations disabled in config`);
         return false;
     }
 
@@ -207,19 +290,21 @@ async function executeBridgeOperation(pk, config, walletNum) {
         
         return true;
     } catch (error) {
-        logger.setWalletNum(walletNum);
-        logger.error(`Error in bridge operations: ${error.message}`);
+        walletLogger.error(`Error in bridge operations: ${error.message}`);
         return false;
     }
 }
 
 // Execute transfer operations
 async function executeTransferOperation(tokenTransfer, pk, config, walletNum) {
+    // Always set wallet number before any logging
+    logger.setWalletNum(walletNum);
+    const walletLogger = logger.getInstance(walletNum);
+    
     // Verify if transfer is enabled in config
-    const configManager = new ConfigManager(config);
+    const configManager = new ConfigManager(config, {}, walletNum);
     if (!configManager.isEnabled('transfer')) {
-        logger.setWalletNum(walletNum);
-        logger.warn(`Transfer operations disabled in config`);
+        walletLogger.warn(`Transfer operations disabled in config`);
         return false;
     }
     
@@ -228,9 +313,8 @@ async function executeTransferOperation(tokenTransfer, pk, config, walletNum) {
     const maxRetries = configManager.get('general.max_retries', 5);
     
     while (!success && attempt < maxRetries) {
-        logger.setWalletNum(walletNum);
-        logger.header(`Running Transfer Operations for Wallet ${walletNum}`);
-        logger.info(`Transferring tokens... (Attempt ${attempt + 1}/${maxRetries})`);
+        walletLogger.header(`Running Transfer Operations for Wallet ${walletNum}`);
+        walletLogger.info(`Transferring tokens... (Attempt ${attempt + 1}/${maxRetries})`);
         
         // Transfer function already handles configuration internally
         success = await tokenTransfer.transferToSelf(pk, walletNum);
@@ -239,7 +323,7 @@ async function executeTransferOperation(tokenTransfer, pk, config, walletNum) {
             attempt++;
             if (attempt < maxRetries) {
                 const waitTime = Math.min(300, (configManager.get('general.base_wait_time', 10) * (2 ** attempt)));
-                logger.warn(`Waiting ${waitTime} seconds before retry...`);
+                walletLogger.warn(`Waiting ${waitTime} seconds before retry...`);
                 await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
             }
         }
@@ -252,16 +336,18 @@ async function executeTransferOperation(tokenTransfer, pk, config, walletNum) {
 
 // Execute contract deployment operations
 async function executeContractOperation(pk, config, walletNum) {
-    const configManager = new ConfigManager(config);
+    // Always set wallet number before any logging
+    logger.setWalletNum(walletNum);
+    const walletLogger = logger.getInstance(walletNum);
+    
+    const configManager = new ConfigManager(config, {}, walletNum);
     if (!configManager.isEnabled('contract_deploy')) {
-        logger.setWalletNum(walletNum);
-        logger.warn(`Contract deployment operations disabled in config`);
+        walletLogger.warn(`Contract deployment operations disabled in config`);
         return false;
     }
     
     try {
-        logger.setWalletNum(walletNum);
-        logger.header(`Running Contract Operations for Wallet ${walletNum}`);
+        walletLogger.header(`Running Contract Operations for Wallet ${walletNum}`);
         
         // Initialize contract deployer with wallet's private key and current config
         const contractDeployer = new NormalContract(pk, config);
@@ -275,24 +361,25 @@ async function executeContractOperation(pk, config, walletNum) {
         
         return true;
     } catch (error) {
-        logger.setWalletNum(walletNum);
-        logger.error(`Error in contract operations: ${error.message}`);
+        walletLogger.error(`Error in contract operations: ${error.message}`);
         return false;
     }
 }
 
 // Execute ERC20 token operations
 async function executeERC20Operation(pk, config, walletNum) {
-    const configManager = new ConfigManager(config);
+    // Always set wallet number before any logging
+    logger.setWalletNum(walletNum);
+    const walletLogger = logger.getInstance(walletNum);
+    
+    const configManager = new ConfigManager(config, {}, walletNum);
     if (!configManager.isEnabled('erc20')) {
-        logger.setWalletNum(walletNum);
-        logger.warn(`ERC20 token operations disabled in config`);
+        walletLogger.warn(`ERC20 token operations disabled in config`);
         return false;
     }
     
     try {
-        logger.setWalletNum(walletNum);
-        logger.header(`Running ERC20 Token Operations for Wallet ${walletNum}`);
+        walletLogger.header(`Running ERC20 Token Operations for Wallet ${walletNum}`);
         
         // Initialize ERC20 token deployer with wallet's private key and current config
         const erc20Deployer = new ERC20Token(pk, config);
@@ -306,24 +393,25 @@ async function executeERC20Operation(pk, config, walletNum) {
         
         return true;
     } catch (error) {
-        logger.setWalletNum(walletNum);
-        logger.error(`Error in ERC20 token operations: ${error.message}`);
+        walletLogger.error(`Error in ERC20 token operations: ${error.message}`);
         return false;
     }
 }
 
 // Execute NFT operations
 async function executeNFTOperation(pk, config, walletNum) {
-    const configManager = new ConfigManager(config);
+    // Always set wallet number before any logging
+    logger.setWalletNum(walletNum);
+    const walletLogger = logger.getInstance(walletNum);
+    
+    const configManager = new ConfigManager(config, {}, walletNum);
     if (!configManager.isEnabled('nft')) {
-        logger.setWalletNum(walletNum);
-        logger.warn(`NFT operations disabled in config`);
+        walletLogger.warn(`NFT operations disabled in config`);
         return false;
     }
     
     try {
-        logger.setWalletNum(walletNum);
-        logger.header(`Running NFT Operations for Wallet ${walletNum}`);
+        walletLogger.header(`Running NFT Operations for Wallet ${walletNum}`);
         
         // Initialize NFT manager with wallet's private key and current config
         const nftManager = new NFT(pk, config);
@@ -337,24 +425,25 @@ async function executeNFTOperation(pk, config, walletNum) {
         
         return true;
     } catch (error) {
-        logger.setWalletNum(walletNum);
-        logger.error(`Error in NFT operations: ${error.message}`);
+        walletLogger.error(`Error in NFT operations: ${error.message}`);
         return false;
     }
 }
 
 // Execute contract testing operations
 async function executeContractTestingOperation(pk, config, walletNum) {
-    const configManager = new ConfigManager(config);
+    // Always set wallet number before any logging
+    logger.setWalletNum(walletNum);
+    const walletLogger = logger.getInstance(walletNum);
+    
+    const configManager = new ConfigManager(config, {}, walletNum);
     if (!configManager.isEnabled('contract_testing')) {
-        logger.setWalletNum(walletNum);
-        logger.warn(`Contract testing operations disabled in config`);
+        walletLogger.warn(`Contract testing operations disabled in config`);
         return false;
     }
     
     try {
-        logger.setWalletNum(walletNum);
-        logger.header(`Running Contract Testing Operations for Wallet ${walletNum}`);
+        walletLogger.header(`Running Contract Testing Operations for Wallet ${walletNum}`);
         
         // Initialize contract tester manager with wallet's private key and current config
         const contractTesterManager = new TestContract(pk, config);
@@ -368,24 +457,25 @@ async function executeContractTestingOperation(pk, config, walletNum) {
         
         return true;
     } catch (error) {
-        logger.setWalletNum(walletNum);
-        logger.error(`Error in contract testing operations: ${error.message}`);
+        walletLogger.error(`Error in contract testing operations: ${error.message}`);
         return false;
     }
 }
 
 // Execute batch operations
 async function executeBatchOperation(pk, config, walletNum) {
-    const configManager = new ConfigManager(config);
+    // Always set wallet number before any logging
+    logger.setWalletNum(walletNum);
+    const walletLogger = logger.getInstance(walletNum);
+    
+    const configManager = new ConfigManager(config, {}, walletNum);
     if (!configManager.isEnabled('batch_operations')) {
-        logger.setWalletNum(walletNum);
-        logger.warn(`Batch operations disabled in config`);
+        walletLogger.warn(`Batch operations disabled in config`);
         return false;
     }
     
     try {
-        logger.setWalletNum(walletNum);
-        logger.header(`Running Batch Operations for Wallet ${walletNum}`);
+        walletLogger.header(`Running Batch Operations for Wallet ${walletNum}`);
         
         // Initialize batch operation manager with wallet's private key and current config
         const batchOperationManager = new BatchOperation(pk, config);
@@ -399,22 +489,24 @@ async function executeBatchOperation(pk, config, walletNum) {
         
         return true;
     } catch (error) {
-        logger.setWalletNum(walletNum);
-        logger.error(`Error in batch operations: ${error.message}`);
+        walletLogger.error(`Error in batch operations: ${error.message}`);
         return false;
     }
 }
 
 async function main() {
     while (true) {
-        logger.header('Fhenix Nitrogen Testnet Automation Tool');
+        // Start with global logger (no wallet context)
+        logger.setWalletNum(null);
+        const mainLogger = logger.getInstance();
+        mainLogger.header('Fhenix Nitrogen Testnet Automation Tool');
 
         try {
             // Load configuration
             const config = await loadConfig();
-            logger.success(`Configuration loaded`);
+            mainLogger.success(`Configuration loaded`);
             
-            // Create config manager
+            // Create config manager (tanpa wallet num dahulu)
             const configManager = new ConfigManager(config);
             
             // Load proxies
@@ -426,28 +518,33 @@ async function main() {
                 .map(line => line.trim())
                 .filter(line => line);
 
-            logger.success(`Found ${privateKeys.length} private keys`);
-            logger.info(`Initializing automation...`);
+            mainLogger.success(`Found ${privateKeys.length} private keys`);
+            mainLogger.info(`Initializing automation...`);
 
             // Create instances of our modules
             const tokenTransfer = new TokenTransfer(config);
 
-            // Process wallets
-            logger.header(`Processing ${privateKeys.length} wallets...`);
+            // Process wallets - use global logger for this header
+            mainLogger.header(`Processing ${privateKeys.length} wallets...`);
 
             for (let i = 0; i < privateKeys.length; i++) {
                 const walletNum = i + 1;
                 const pk = privateKeys[i];
 
+                // Set wallet number for this wallet's operations
                 logger.setWalletNum(walletNum);
-                logger.header(`Processing Wallet ${walletNum}/${privateKeys.length}`);
+                const walletLogger = logger.getInstance(walletNum);
+                
+                // Add newline before each wallet for better readability
+                console.log('');
+                walletLogger.header(`Processing Wallet ${walletNum}/${privateKeys.length}`);
 
                 // Get random proxy if available
                 const proxy = proxies.length > 0 ? 
                     proxies[Math.floor(Math.random() * proxies.length)] : null;
                 
                 if (proxy) {
-                    logger.info(`Using proxy: ${proxy}`);
+                    walletLogger.info(`Using proxy: ${proxy}`);
                 }
                 
                 // Define all operations
@@ -465,28 +562,38 @@ async function main() {
                 const operations = configManager.getRandomizedOperations(allOperations);
                 
                 // Log the operation sequence
-                logger.info(`Operations sequence: ${operations.map(op => op.name).join(' -> ')}`);
+                walletLogger.info(`Operations sequence: ${operations.map(op => op.name).join(' -> ')}`);
                 
                 // Execute operations in the determined order
                 for (const operation of operations) {
-                    if (operation.name === "bridge") {
-                        await operation.fn(pk, config, walletNum);
-                    } else if (operation.name === "transfer") {
-                        await operation.fn(tokenTransfer, pk, config, walletNum);
-                    } else {
-                        await operation.fn(pk, config, walletNum);
+                    try {
+                        // Reset wallet number before each operation
+                        logger.setWalletNum(walletNum);
+                        
+                        if (operation.name === "bridge") {
+                            await operation.fn(pk, config, walletNum);
+                        } else if (operation.name === "transfer") {
+                            await operation.fn(tokenTransfer, pk, config, walletNum);
+                        } else {
+                            await operation.fn(pk, config, walletNum);
+                        }
+                    } catch (operationError) {
+                        // Log error but continue with next operation
+                        walletLogger.error(`Error in ${operation.name} operation: ${operationError.message}`);
                     }
                 }
 
                 // Wait between wallets
                 if (i < privateKeys.length - 1) {
                     const waitTime = Math.floor(Math.random() * 11) + 5; // 5-15 seconds
-                    logger.warn(`Waiting ${waitTime} seconds before next wallet...`);
+                    walletLogger.warn(`Waiting ${waitTime} seconds before next wallet...`);
                     await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
                 }
             }
 
-            logger.header('Wallet processing completed! Starting 8-hour countdown...');
+            // Reset to global logger for completion message
+            logger.setWalletNum(null);
+            mainLogger.header('Wallet processing completed! Starting 8-hour countdown...');
 
             // Start the countdown timer
             await countdownTimer(8);

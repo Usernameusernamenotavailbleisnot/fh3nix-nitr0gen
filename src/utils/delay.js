@@ -1,5 +1,6 @@
+// src/utils/delay.js
 const chalk = require('chalk');
-const Logger = require('./logger');
+const logger = require('./logger');
 
 /**
  * Adds a random delay between transactions based on config settings
@@ -10,7 +11,8 @@ const Logger = require('./logger');
  */
 async function addRandomDelay(config, walletNum, operationName = 'next transaction') {
     try {
-        const logger = new Logger(walletNum);
+        // Use shared logger
+        const log = walletNum !== null ? logger.getInstance(walletNum) : logger.getInstance();
         
         // Extract delay settings from various possible config formats
         let minDelay, maxDelay;
@@ -36,13 +38,14 @@ async function addRandomDelay(config, walletNum, operationName = 'next transacti
         // Generate random delay within the specified range
         const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
         
-        logger.custom(`⌛ Waiting ${delay} seconds before ${operationName}...`, chalk.yellow);
+        log.custom(`⌛ Waiting ${delay} seconds before ${operationName}...`, chalk.yellow);
         await new Promise(resolve => setTimeout(resolve, delay * 1000));
         
         return true;
     } catch (error) {
-        const logger = new Logger(walletNum);
-        logger.error(`Error in delay function: ${error.message}`);
+        // Use shared logger
+        const log = walletNum !== null ? logger.getInstance(walletNum) : logger.getInstance();
+        log.error(`Error in delay function: ${error.message}`);
         // Continue execution even if delay fails
         return false;
     }

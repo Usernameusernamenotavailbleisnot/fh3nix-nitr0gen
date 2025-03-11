@@ -1,9 +1,10 @@
+// src/operations/batchoperation.js
 const constants = require('../utils/constants');
 const { addRandomDelay } = require('../utils/delay');
 const BlockchainManager = require('../managers/BlockchainManager');
 const ContractManager = require('../managers/ContractManager');
 const ConfigManager = require('../managers/ConfigManager');
-const Logger = require('../utils/logger');
+const logger = require('../utils/logger');
 
 class BatchOperationManager {
     constructor(privateKey, config = {}) {
@@ -16,21 +17,23 @@ class BatchOperationManager {
             }
         };
         
-        // Initialize managers
+        // Initialize blockchain manager
         this.blockchain = new BlockchainManager(privateKey, config);
-        this.configManager = new ConfigManager(config, { batch_operations: this.defaultConfig });
+        this.walletNum = this.blockchain.walletNum;
+        
+        // Initialize other managers with shared logger
+        this.configManager = new ConfigManager(config, { batch_operations: this.defaultConfig }, this.walletNum);
         this.contractManager = new ContractManager(this.blockchain, config);
         
-        this.logger = new Logger();
-        this.walletNum = null;
+        // Use shared logger instance
+        this.logger = this.walletNum !== null ? logger.getInstance(this.walletNum) : logger.getInstance();
     }
     
     setWalletNum(num) {
         this.walletNum = num;
         this.blockchain.setWalletNum(num);
         this.configManager.setWalletNum(num);
-        this.contractManager.logger.setWalletNum(num);
-        this.logger.setWalletNum(num);
+        this.logger = logger.getInstance(num);
     }
     
     // Get batch processor contract source
@@ -196,7 +199,6 @@ class BatchOperationManager {
             
             if (result.success) {
                 this.logger.success(`setValue operation successful`);
-                this.logger.success(`View transaction: ${constants.NETWORK.EXPLORER_URL}/tx/${result.txHash}`);
                 
                 // Verify the status after setting value
                 const statusResult = await this.contractManager.callViewMethod(
@@ -253,7 +255,6 @@ class BatchOperationManager {
             
             if (result.success) {
                 this.logger.success(`Batch execution successful`);
-                this.logger.success(`View transaction: ${constants.NETWORK.EXPLORER_URL}/tx/${result.txHash}`);
                 
                 // Verify the status after batch execution
                 const statusResult = await this.contractManager.callViewMethod(

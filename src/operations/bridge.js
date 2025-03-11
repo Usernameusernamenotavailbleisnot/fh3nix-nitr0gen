@@ -1,8 +1,9 @@
+// src/operations/bridge.js
 const constants = require('../utils/constants');
 const { addRandomDelay } = require('../utils/delay');
 const BlockchainManager = require('../managers/BlockchainManager');
 const ConfigManager = require('../managers/ConfigManager');
-const Logger = require('../utils/logger');
+const logger = require('../utils/logger');
 
 class Bridge {
     constructor(privateKey, config = {}) {
@@ -19,16 +20,18 @@ class Bridge {
         
         // Initialize managers
         this.blockchain = new BlockchainManager(privateKey, config);
-        this.configManager = new ConfigManager(config, { bridge: this.defaultConfig });
-        this.logger = new Logger();
-        this.walletNum = null;
+        this.walletNum = this.blockchain.walletNum;
+        this.configManager = new ConfigManager(config, { bridge: this.defaultConfig }, this.walletNum);
+        
+        // Use shared logger instance
+        this.logger = this.walletNum !== null ? logger.getInstance(this.walletNum) : logger.getInstance();
     }
     
     setWalletNum(num) {
         this.walletNum = num;
         this.blockchain.setWalletNum(num);
         this.configManager.setWalletNum(num);
-        this.logger.setWalletNum(num);
+        this.logger = logger.getInstance(num);
     }
     
     async getBalances() {

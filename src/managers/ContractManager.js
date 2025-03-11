@@ -1,12 +1,16 @@
+// src/managers/ContractManager.js
 const solc = require('solc');
-const Logger = require('../utils/logger');
+const logger = require('../utils/logger');
+const constants = require('../utils/constants');
 const { addRandomDelay } = require('../utils/delay');
 
 class ContractManager {
     constructor(blockchainManager, config = {}) {
         this.blockchain = blockchainManager;
         this.config = config;
-        this.logger = new Logger(blockchainManager.walletNum);
+        // Use the wallet number from blockchain manager
+        this.walletNum = blockchainManager.walletNum;
+        this.logger = this.walletNum !== null ? logger.getInstance(this.walletNum) : logger.getInstance();
     }
     
     // Get delay configuration
@@ -103,7 +107,9 @@ class ContractManager {
                 throw new Error(result.error);
             }
             
+            // Log only once with specific contract info
             this.logger.success(`${methodName} contract deployed at: ${result.receipt.contractAddress}`);
+            this.logger.success(`View transaction: ${constants.NETWORK.EXPLORER_URL}/tx/${result.txHash}`);
             
             return {
                 contractAddress: result.receipt.contractAddress,
@@ -136,9 +142,14 @@ class ContractManager {
             };
             
             // Use the blockchain manager to send the transaction
-            // Simplified method name (without full args) to reduce log verbosity
             const simplifiedMethodName = methodName;
             const result = await this.blockchain.sendTransaction(txObject, simplifiedMethodName);
+            
+            // Only log the transaction URL here if successful
+            // (remove from operation classes to avoid duplication)
+            if (result.success) {
+                this.logger.success(`View transaction: ${constants.NETWORK.EXPLORER_URL}/tx/${result.txHash}`);
+            }
             
             return result;
         } catch (error) {

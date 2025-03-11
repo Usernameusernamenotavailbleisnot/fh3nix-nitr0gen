@@ -1,9 +1,10 @@
+// src/operations/testcontract.js
 const constants = require('../utils/constants');
 const { addRandomDelay } = require('../utils/delay');
 const BlockchainManager = require('../managers/BlockchainManager');
 const ContractManager = require('../managers/ContractManager');
 const ConfigManager = require('../managers/ConfigManager');
-const Logger = require('../utils/logger');
+const logger = require('../utils/logger');
 
 class ContractTesterManager {
     constructor(privateKey, config = {}) {
@@ -17,21 +18,23 @@ class ContractTesterManager {
             }
         };
         
-        // Initialize managers
+        // Initialize blockchain manager
         this.blockchain = new BlockchainManager(privateKey, config);
-        this.configManager = new ConfigManager(config, { contract_testing: this.defaultConfig });
+        this.walletNum = this.blockchain.walletNum;
+        
+        // Initialize other managers with shared logger
+        this.configManager = new ConfigManager(config, { contract_testing: this.defaultConfig }, this.walletNum);
         this.contractManager = new ContractManager(this.blockchain, config);
         
-        this.logger = new Logger();
-        this.walletNum = null;
+        // Use shared logger instance
+        this.logger = this.walletNum !== null ? logger.getInstance(this.walletNum) : logger.getInstance();
     }
     
     setWalletNum(num) {
         this.walletNum = num;
         this.blockchain.setWalletNum(num);
         this.configManager.setWalletNum(num);
-        this.contractManager.logger.setWalletNum(num);
-        this.logger.setWalletNum(num);
+        this.logger = logger.getInstance(num);
     }
     
     // Generate test values for parameter variation
@@ -92,7 +95,6 @@ class ContractTesterManager {
                 
                 if (result.success) {
                     this.logger.success(`Parameter test successful: setValue(${value})`);
-                    this.logger.success(`View transaction: ${constants.NETWORK.EXPLORER_URL}/tx/${result.txHash}`);
                     successCount++;
                     
                     // After setting, verify the value was set correctly
@@ -151,7 +153,6 @@ class ContractTesterManager {
                 
                 if (setValueResult.success) {
                     this.logger.success(`Base value set to ${baseValue}`);
-                    this.logger.success(`View transaction: ${constants.NETWORK.EXPLORER_URL}/tx/${setValueResult.txHash}`);
                 } else {
                     this.logger.error(`Failed to set base value for stress tests: ${setValueResult.error}`);
                     return false;
@@ -184,7 +185,6 @@ class ContractTesterManager {
                 
                 if (result.success) {
                     this.logger.success(`Stress test successful: ${operation.name}(${args.join(', ')})`);
-                    this.logger.success(`View transaction: ${constants.NETWORK.EXPLORER_URL}/tx/${result.txHash}`);
                     successCount++;
                     
                     // Check current value
@@ -251,7 +251,6 @@ class ContractTesterManager {
                 
                 if (result.success) {
                     this.logger.success(`Boundary test successful: setValue(${value})`);
-                    this.logger.success(`View transaction: ${constants.NETWORK.EXPLORER_URL}/tx/${result.txHash}`);
                     successCount++;
                     
                     // Verify the value was set correctly

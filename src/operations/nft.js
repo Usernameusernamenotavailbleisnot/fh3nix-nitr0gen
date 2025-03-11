@@ -1,10 +1,11 @@
+// src/operations/nft.js
 const constants = require('../utils/constants');
 const { addRandomDelay } = require('../utils/delay');
 const crypto = require('crypto');
 const BlockchainManager = require('../managers/BlockchainManager');
 const ContractManager = require('../managers/ContractManager');
 const ConfigManager = require('../managers/ConfigManager');
-const Logger = require('../utils/logger');
+const logger = require('../utils/logger');
 
 class NFTManager {
     constructor(privateKey, config = {}) {
@@ -22,21 +23,23 @@ class NFTManager {
             }
         };
         
-        // Initialize managers
+        // Initialize blockchain manager 
         this.blockchain = new BlockchainManager(privateKey, config);
-        this.configManager = new ConfigManager(config, { nft: this.defaultConfig });
+        this.walletNum = this.blockchain.walletNum;
+        
+        // Initialize other managers with shared logger
+        this.configManager = new ConfigManager(config, { nft: this.defaultConfig }, this.walletNum);
         this.contractManager = new ContractManager(this.blockchain, config);
         
-        this.logger = new Logger();
-        this.walletNum = null;
+        // Use shared logger instance
+        this.logger = this.walletNum !== null ? logger.getInstance(this.walletNum) : logger.getInstance();
     }
     
     setWalletNum(num) {
         this.walletNum = num;
         this.blockchain.setWalletNum(num);
-        this.contractManager.logger.setWalletNum(num);
         this.configManager.setWalletNum(num);
-        this.logger.setWalletNum(num);
+        this.logger = logger.getInstance(num);
     }
     
     generateRandomNFTName() {
@@ -159,6 +162,7 @@ class NFTManager {
                 if (mintResult.success) {
                     mintedTokens.push(tokenId);
                     this.logger.success(`Token #${tokenId} minted successfully`);
+                    // Removed duplicate transaction log
                 } else {
                     this.logger.error(`Failed to mint token #${tokenId}: ${mintResult.error}`);
                 }
@@ -206,6 +210,7 @@ class NFTManager {
                     
                     if (burnResult.success) {
                         this.logger.success(`Token #${tokenId} burned successfully`);
+                        // Removed duplicate transaction log
                     } else {
                         this.logger.error(`Failed to burn token #${tokenId}: ${burnResult.error}`);
                     }

@@ -1,8 +1,9 @@
+// src/operations/transfer.js
 const constants = require('../utils/constants');
 const { addRandomDelay } = require('../utils/delay');
 const BlockchainManager = require('../managers/BlockchainManager');
 const ConfigManager = require('../managers/ConfigManager');
-const Logger = require('../utils/logger');
+const logger = require('../utils/logger');
 
 class TokenTransfer {
     constructor(config = {}) {
@@ -23,9 +24,12 @@ class TokenTransfer {
             repeat_times: 1
         };
         
-        // Initialize managers and logger (without private key initially)
+        // Initialize config manager
         this.configManager = new ConfigManager(config, { transfer: this.defaultConfig });
-        this.logger = new Logger();
+        
+        // Initial logger is global
+        this.logger = logger.getInstance();
+        this.walletNum = null;
 
         // Will be initialized per wallet in transferToSelf
         this.blockchain = null;
@@ -40,7 +44,7 @@ class TokenTransfer {
         // Initialize blockchain manager for this wallet if not already initialized
         if (!this.blockchain || this.blockchain.walletNum !== walletNum) {
             this.blockchain = new BlockchainManager(privateKey, this.configManager.config, walletNum);
-            this.logger.setWalletNum(walletNum);
+            this.logger = logger.getInstance(walletNum);
         }
         
         try {
@@ -126,6 +130,7 @@ class TokenTransfer {
             
             if (result.success) {
                 this.logger.success(`Transfer #${transferNum}/${totalTransfers} successful`);
+                this.logger.success(`View transaction: ${constants.NETWORK.EXPLORER_URL}/tx/${result.txHash}`);
                 return true;
             } else {
                 this.logger.error(`Transfer #${transferNum}/${totalTransfers} failed: ${result.error}`);
@@ -139,23 +144,23 @@ class TokenTransfer {
     }
 
     async transferToSelf(privateKey, walletNum = 0) {
+        // Update wallet number and loggers
+        this.walletNum = walletNum;
+        this.logger = logger.getInstance(walletNum);
+        this.configManager.setWalletNum(walletNum);
+        
         if (!this.configManager.isEnabled('transfer')) {
-            this.logger.setWalletNum(walletNum);
             this.logger.warn(`Transfer disabled in config`);
             return true;
         }
 
         // Initialize blockchain manager for this wallet
         this.blockchain = new BlockchainManager(privateKey, this.configManager.config, walletNum);
-        this.logger.setWalletNum(walletNum);
         
         this.logger.header(`Starting token transfer operations...`);
         
         try {
             // Get transfer count from config
-            const transferCountRange = this.configManager.getRange('transfer', 'count', 1, 3);
-            
-            // Determine actual number of transfers (between min and max)
             const transferCount = this.configManager.getRandomInRange('transfer', 'count', 1, 3);
             
             // Get repeat times if configured

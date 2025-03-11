@@ -1,6 +1,7 @@
+// src/managers/BlockchainManager.js
 const { Web3 } = require('web3');
 const constants = require('../utils/constants');
-const Logger = require('../utils/logger');
+const logger = require('../utils/logger');
 
 class BlockchainManager {
     constructor(privateKey, config = {}, walletNum = null) {
@@ -29,8 +30,8 @@ class BlockchainManager {
         this.currentNonce = null;
         this.sepoliaNonce = null;
         
-        // Initialize logger
-        this.logger = new Logger(walletNum);
+        // Use shared logger
+        this.logger = walletNum !== null ? logger.getInstance(walletNum) : logger.getInstance();
     }
     
     // Helper method to safely stringify objects that might contain BigInt values
@@ -42,7 +43,7 @@ class BlockchainManager {
     
     setWalletNum(num) {
         this.walletNum = num;
-        this.logger.setWalletNum(num);
+        this.logger = logger.getInstance(num);
     }
     
     // Get the next nonce, considering pending transactions
@@ -208,8 +209,9 @@ class BlockchainManager {
             // Send the transaction (less verbose logging)
             const receipt = await web3Instance.eth.sendSignedTransaction(signedTx.rawTransaction);
             
+            // Simplified logging - just log success without transaction details
+            // Operation-specific classes will log more details as needed
             this.logger.success(`${methodName} transaction successful`);
-            this.logger.success(`View transaction: ${explorerUrl}/tx/${receipt.transactionHash}`);
             
             return {
                 txHash: receipt.transactionHash,

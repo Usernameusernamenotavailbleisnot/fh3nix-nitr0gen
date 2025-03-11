@@ -1,9 +1,10 @@
+// src/operations/normalcontract.js
 const constants = require('../utils/constants');
 const { addRandomDelay } = require('../utils/delay');
 const BlockchainManager = require('../managers/BlockchainManager');
 const ContractManager = require('../managers/ContractManager');
 const ConfigManager = require('../managers/ConfigManager');
-const Logger = require('../utils/logger');
+const logger = require('../utils/logger');
 
 class ContractDeployer {
     constructor(privateKey, config = {}) {
@@ -20,21 +21,23 @@ class ContractDeployer {
             }
         };
         
-        // Initialize managers
+        // Initialize blockchain manager
         this.blockchain = new BlockchainManager(privateKey, config);
-        this.configManager = new ConfigManager(config, { contract_deploy: this.defaultConfig });
+        this.walletNum = this.blockchain.walletNum;
+        
+        // Initialize other managers with shared logger
+        this.configManager = new ConfigManager(config, { contract_deploy: this.defaultConfig }, this.walletNum);
         this.contractManager = new ContractManager(this.blockchain, config);
         
-        this.logger = new Logger();
-        this.walletNum = null;
+        // Use shared logger instance
+        this.logger = this.walletNum !== null ? logger.getInstance(this.walletNum) : logger.getInstance();
     }
     
     setWalletNum(num) {
         this.walletNum = num;
         this.blockchain.setWalletNum(num);
         this.configManager.setWalletNum(num);
-        this.contractManager.logger.setWalletNum(num);
-        this.logger.setWalletNum(num);
+        this.logger = logger.getInstance(num);
     }
     
     async executeContractOperations() {
@@ -69,7 +72,6 @@ class ContractDeployer {
             );
             
             this.logger.success(`Contract deployed at: ${deployedContract.contractAddress}`);
-            this.logger.success(`View transaction: ${constants.NETWORK.EXPLORER_URL}/tx/${deployedContract.txHash}`);
             
             // Skip interactions if disabled in config
             if (!this.configManager.get('operations.contract_deploy.contract_interactions.enabled', 
@@ -128,7 +130,6 @@ class ContractDeployer {
                 
                 if (result.success) {
                     this.logger.success(`${interactionType} successful`);
-                    this.logger.success(`View transaction: ${constants.NETWORK.EXPLORER_URL}/tx/${result.txHash}`);
                     successCount++;
                 } else {
                     this.logger.error(`${interactionType} failed: ${result.error}`);

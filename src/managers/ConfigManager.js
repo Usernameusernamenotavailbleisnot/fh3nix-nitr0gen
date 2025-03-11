@@ -1,15 +1,18 @@
+// src/managers/ConfigManager.js
 const _ = require('lodash');
-const Logger = require('../utils/logger');
+const logger = require('../utils/logger');
 
 class ConfigManager {
     constructor(config = {}, defaultConfig = {}, walletNum = null) {
         // Deep merge the configuration
         this.config = _.merge({}, defaultConfig, config);
-        this.logger = new Logger(walletNum);
+        this.walletNum = walletNum;
+        this.logger = walletNum !== null ? logger.getInstance(walletNum) : logger.getInstance();
     }
     
     setWalletNum(num) {
-        this.logger.setWalletNum(num);
+        this.walletNum = num;
+        this.logger = logger.getInstance(num);
     }
     
     // Get a configuration value with dot notation support (e.g., "operations.erc20.enabled")

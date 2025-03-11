@@ -1,9 +1,10 @@
+// src/operations/erc20.js
 const constants = require('../utils/constants');
 const { addRandomDelay } = require('../utils/delay');
 const BlockchainManager = require('../managers/BlockchainManager');
 const ContractManager = require('../managers/ContractManager');
 const ConfigManager = require('../managers/ConfigManager');
-const Logger = require('../utils/logger');
+const logger = require('../utils/logger');
 
 class ERC20TokenDeployer {
     constructor(privateKey, config = {}) {
@@ -18,21 +19,23 @@ class ERC20TokenDeployer {
             decimals: 18
         };
         
-        // Initialize managers
+        // Initialize blockchain manager 
         this.blockchain = new BlockchainManager(privateKey, config);
-        this.configManager = new ConfigManager(config, { erc20: this.defaultConfig });
+        this.walletNum = this.blockchain.walletNum;
+        
+        // Initialize other managers with shared logger
+        this.configManager = new ConfigManager(config, { erc20: this.defaultConfig }, this.walletNum);
         this.contractManager = new ContractManager(this.blockchain, config);
         
-        this.walletNum = null;
-        this.logger = new Logger();
+        // Use shared logger instance
+        this.logger = this.walletNum !== null ? logger.getInstance(this.walletNum) : logger.getInstance();
     }
     
     setWalletNum(num) {
         this.walletNum = num;
         this.blockchain.setWalletNum(num);
-        this.contractManager.logger.setWalletNum(num);
         this.configManager.setWalletNum(num);
-        this.logger.setWalletNum(num);
+        this.logger = logger.getInstance(num);
     }
     
     // Generate random token name and symbol
