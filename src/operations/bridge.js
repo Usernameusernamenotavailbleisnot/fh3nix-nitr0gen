@@ -1,14 +1,21 @@
 // src/operations/bridge.js
 const constants = require('../utils/constants');
-const { addRandomDelay } = require('../utils/delay');
-const BlockchainManager = require('../managers/BlockchainManager');
-const ConfigManager = require('../managers/ConfigManager');
-const logger = require('../utils/logger');
+const BaseOperation = require('./BaseOperation');
 
-class Bridge {
+/**
+ * Manages bridge operations between networks
+ * @extends BaseOperation
+ */
+class Bridge extends BaseOperation {
+    /**
+     * Create a new Bridge instance
+     * 
+     * @param {string} privateKey - Wallet private key
+     * @param {Object} config - Configuration object
+     */
     constructor(privateKey, config = {}) {
-        // Default bridge configuration
-        this.defaultConfig = {
+        // Define default config
+        const defaultConfig = {
             enabled: false,
             amount: {
                 min: 0.0001,
@@ -18,22 +25,18 @@ class Bridge {
             repeat_times: 1
         };
         
-        // Initialize managers
-        this.blockchain = new BlockchainManager(privateKey, config);
-        this.walletNum = this.blockchain.walletNum;
-        this.configManager = new ConfigManager(config, { bridge: this.defaultConfig }, this.walletNum);
+        // Initialize base class
+        super(privateKey, config, 'bridge');
         
-        // Use shared logger instance
-        this.logger = this.walletNum !== null ? logger.getInstance(this.walletNum) : logger.getInstance();
+        // Override default config
+        this.defaultConfig = defaultConfig;
     }
     
-    setWalletNum(num) {
-        this.walletNum = num;
-        this.blockchain.setWalletNum(num);
-        this.configManager.setWalletNum(num);
-        this.logger = logger.getInstance(num);
-    }
-    
+    /**
+     * Get balances on both networks
+     * 
+     * @returns {Promise<Object>} Balance information
+     */
     async getBalances() {
         try {
             const sepoliaBalanceData = await this.blockchain.getBalance('sepolia');
@@ -56,8 +59,13 @@ class Bridge {
         }
     }
     
+    /**
+     * Bridge ETH from Sepolia to Fhenix
+     * 
+     * @returns {Promise<boolean>} Success status
+     */
     async bridgeETH() {
-        if (!this.configManager.isEnabled('bridge')) {
+        if (!this.isEnabled()) {
             this.logger.warn(`Bridge feature is disabled in config`);
             return false;
         }
@@ -65,8 +73,8 @@ class Bridge {
         try {
             // Generate random amount
             const amountRange = this.configManager.getRange('bridge', 'amount', 0.0001, 0.0004);
-            const decimals = this.configManager.get('operations.bridge.amount.decimals', 
-                             this.configManager.get('bridge.amount.decimals', 7));
+            const decimals = this.configManager.getNumber('operations.bridge.amount.decimals', 
+                             this.configManager.getNumber('bridge.amount.decimals', 7));
             
             const amount_eth = Number(amountRange.min + Math.random() * (amountRange.max - amountRange.min)).toFixed(decimals);
             const amount_wei = this.blockchain.sepoliaWeb3.utils.toWei(amount_eth, 'ether');
@@ -82,7 +90,7 @@ class Bridge {
             this.logger.info(`🌉 Starting bridge of ${amount_eth} ETH...`);
             
             // Add random delay before bridging
-            await addRandomDelay(this.configManager.getDelayConfig(), this.walletNum, "bridge operation");
+            await this.addDelay("bridge operation");
             
             // Prepare transaction
             const txObject = {
@@ -111,6 +119,13 @@ class Bridge {
         }
     }
     
+    /**
+     * Wait for bridge completion
+     * 
+     * @param {string} initialFhenixBalance - Initial balance on Fhenix
+     * @param {string} amountBridgedWei - Amount bridged in wei
+     * @returns {Promise<boolean>} Success status
+     */
     async waitForBridgeCompletion(initialFhenixBalance, amountBridgedWei) {
         this.logger.info(`🔄 Monitoring bridge progress...`);
         const checkInterval = 30; // Check every 30 seconds
@@ -149,14 +164,12 @@ class Bridge {
         return false;
     }
     
-    async executeBridgeOperations() {
-        if (!this.configManager.isEnabled('bridge')) {
-            this.logger.warn(`Bridge operations disabled in config`);
-            return true; // Return success to not interrupt the flow
-        }
-        
-        this.logger.header(`Starting bridge operations...`);
-        
+    /**
+     * Implement the executeOperations method from BaseOperation
+     * 
+     * @returns {Promise<boolean>} Success status
+     */
+    async executeOperations() {
         try {
             // Reset nonce tracking at the start of operations
             this.blockchain.resetNonce('sepolia');

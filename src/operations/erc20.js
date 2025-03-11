@@ -1,16 +1,23 @@
 // src/operations/erc20.js
 const constants = require('../utils/constants');
-const { addRandomDelay } = require('../utils/delay');
-const BlockchainManager = require('../managers/BlockchainManager');
+const BaseOperation = require('./BaseOperation');
 const ContractManager = require('../managers/ContractManager');
-const ConfigManager = require('../managers/ConfigManager');
-const logger = require('../utils/logger');
 
-class ERC20TokenDeployer {
+/**
+ * Manages ERC20 token deployment and interaction
+ * @extends BaseOperation
+ */
+class ERC20Token extends BaseOperation {
+    /**
+     * Create a new ERC20Token instance
+     * 
+     * @param {string} privateKey - Wallet private key
+     * @param {Object} config - Configuration object
+     */
     constructor(privateKey, config = {}) {
-        // Default ERC20 configuration
-        this.defaultConfig = {
-            enable_erc20: true,
+        // Define default config
+        const defaultConfig = {
+            enabled: true,
             mint_amount: {
                 min: 1000000,
                 max: 10000000
@@ -19,32 +26,33 @@ class ERC20TokenDeployer {
             decimals: 18
         };
         
-        // Initialize blockchain manager 
-        this.blockchain = new BlockchainManager(privateKey, config);
-        this.walletNum = this.blockchain.walletNum;
+        // Initialize base class
+        super(privateKey, config, 'erc20');
         
-        // Initialize other managers with shared logger
-        this.configManager = new ConfigManager(config, { erc20: this.defaultConfig }, this.walletNum);
+        // Override default config
+        this.defaultConfig = defaultConfig;
+        
+        // Initialize contract manager
         this.contractManager = new ContractManager(this.blockchain, config);
-        
-        // Use shared logger instance
-        this.logger = this.walletNum !== null ? logger.getInstance(this.walletNum) : logger.getInstance();
     }
     
-    setWalletNum(num) {
-        this.walletNum = num;
-        this.blockchain.setWalletNum(num);
-        this.configManager.setWalletNum(num);
-        this.logger = logger.getInstance(num);
-    }
-    
-    // Generate random token name and symbol
+    /**
+     * Generate random token name
+     * 
+     * @returns {string} Random token name
+     */
     generateRandomTokenName() {
         const prefix = constants.ERC20.TOKEN_NAME_PREFIXES[Math.floor(Math.random() * constants.ERC20.TOKEN_NAME_PREFIXES.length)];
         const suffix = constants.ERC20.TOKEN_NAME_SUFFIXES[Math.floor(Math.random() * constants.ERC20.TOKEN_NAME_SUFFIXES.length)];
         return `${prefix} ${suffix}`;
     }
     
+    /**
+     * Generate token symbol from name
+     * 
+     * @param {string} name - Token name
+     * @returns {string} Token symbol
+     */
     generateTokenSymbol(name) {
         const symbol = name.split(' ')
             .map(word => word.charAt(0).toUpperCase())
@@ -57,29 +65,29 @@ class ERC20TokenDeployer {
         return symbol;
     }
     
-    // Format token amount with decimals
+    /**
+     * Format token amount with decimals
+     * 
+     * @param {number} amount - Token amount
+     * @param {number} decimals - Decimal places
+     * @returns {BigInt} Formatted amount
+     */
     formatTokenAmount(amount, decimals) {
         return BigInt(amount) * BigInt(10) ** BigInt(decimals);
     }
     
-    // Execute token operations
-    async executeTokenOperations() {
-        if (!this.configManager.isEnabled('erc20')) {
-            this.logger.warn(`ERC20 token operations disabled in config`);
-            return true;
-        }
-        
-        this.logger.header(`Starting ERC20 token operations...`);
-        
+    /**
+     * Implement the executeOperations method from BaseOperation
+     * 
+     * @returns {Promise<boolean>} Success status
+     */
+    async executeOperations() {
         try {
-            // Reset blockchain manager nonce
-            this.blockchain.resetNonce();
-            
             // Generate random token name and symbol
             const tokenName = this.generateRandomTokenName();
             const symbol = this.generateTokenSymbol(tokenName);
-            const decimals = this.configManager.get('operations.erc20.decimals', 
-                            this.configManager.get('erc20.decimals', 18));
+            const decimals = this.configManager.getNumber('operations.erc20.decimals', 
+                            this.configManager.getNumber('erc20.decimals', 18));
             
             this.logger.info(`Token: ${tokenName} (${symbol})`);
             this.logger.info(`Decimals: ${decimals}`);
@@ -92,7 +100,7 @@ class ERC20TokenDeployer {
             const compiledContract = await this.contractManager.compileContract(solContractName, contractSource);
             
             // Add random delay before deployment
-            await addRandomDelay(this.configManager.getDelayConfig(), this.walletNum, "ERC20 contract deployment");
+            await this.addDelay("ERC20 contract deployment");
             
             // Deploy token contract
             const deployedContract = await this.contractManager.deployContract(
@@ -107,7 +115,7 @@ class ERC20TokenDeployer {
             this.logger.info(`Will mint ${mintAmount.toLocaleString()} tokens...`);
             
             // Add random delay before minting
-            await addRandomDelay(this.configManager.getDelayConfig(), this.walletNum, "token minting");
+            await this.addDelay("token minting");
             
             // Format amount with decimals
             const formattedAmount = this.formatTokenAmount(mintAmount, decimals).toString();
@@ -124,33 +132,13 @@ class ERC20TokenDeployer {
                 this.logger.success(`Minted ${mintAmount.toLocaleString()} ${symbol} tokens`);
                 
                 // Determine burn amount based on config percentage
-                const burnPercentage = this.configManager.get('operations.erc20.burn_percentage', 
-                                      this.configManager.get('erc20.burn_percentage', 10));
+                const burnPercentage = this.configManager.getNumber('operations.erc20.burn_percentage', 
+                                      this.configManager.getNumber('erc20.burn_percentage', 10));
                                       
                 const burnAmount = Math.floor(mintAmount * burnPercentage / 100);
                 
                 if (burnAmount > 0) {
-                    this.logger.info(`Burning ${burnAmount.toLocaleString()} tokens (${burnPercentage}% of minted)...`);
-                    
-                    // Add random delay before burning
-                    await addRandomDelay(this.configManager.getDelayConfig(), this.walletNum, "token burning");
-                    
-                    // Format burn amount with decimals
-                    const formattedBurnAmount = this.formatTokenAmount(burnAmount, decimals).toString();
-                    
-                    // Burn tokens
-                    const burnResult = await this.contractManager.callContractMethod(
-                        deployedContract.contractAddress,
-                        deployedContract.abi,
-                        'burn',
-                        [formattedBurnAmount]
-                    );
-                    
-                    if (burnResult.success) {
-                        this.logger.success(`Burned ${burnAmount.toLocaleString()} ${symbol} tokens`);
-                    } else {
-                        this.logger.error(`Failed to burn tokens: ${burnResult.error}`);
-                    }
+                    await this.burnTokens(deployedContract, burnAmount, burnPercentage, symbol, decimals);
                 } else {
                     this.logger.info(`No tokens to burn (burn percentage: ${burnPercentage}%)`);
                 }
@@ -169,6 +157,47 @@ class ERC20TokenDeployer {
             return false;
         }
     }
+    
+    /**
+     * Burn tokens
+     * 
+     * @param {Object} deployedContract - Deployed contract info
+     * @param {number} burnAmount - Amount to burn
+     * @param {number} burnPercentage - Burn percentage
+     * @param {string} symbol - Token symbol
+     * @param {number} decimals - Token decimals
+     * @returns {Promise<boolean>} Success status
+     */
+    async burnTokens(deployedContract, burnAmount, burnPercentage, symbol, decimals) {
+        try {
+            this.logger.info(`Burning ${burnAmount.toLocaleString()} tokens (${burnPercentage}% of minted)...`);
+            
+            // Add random delay before burning
+            await this.addDelay("token burning");
+            
+            // Format burn amount with decimals
+            const formattedBurnAmount = this.formatTokenAmount(burnAmount, decimals).toString();
+            
+            // Burn tokens
+            const burnResult = await this.contractManager.callContractMethod(
+                deployedContract.contractAddress,
+                deployedContract.abi,
+                'burn',
+                [formattedBurnAmount]
+            );
+            
+            if (burnResult.success) {
+                this.logger.success(`Burned ${burnAmount.toLocaleString()} ${symbol} tokens`);
+                return true;
+            } else {
+                this.logger.error(`Failed to burn tokens: ${burnResult.error}`);
+                return false;
+            }
+        } catch (error) {
+            this.logger.error(`Error burning tokens: ${error.message}`);
+            return false;
+        }
+    }
 }
 
-module.exports = ERC20TokenDeployer;
+module.exports = ERC20Token;

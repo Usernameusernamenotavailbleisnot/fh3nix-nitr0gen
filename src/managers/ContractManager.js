@@ -4,7 +4,16 @@ const logger = require('../utils/logger');
 const constants = require('../utils/constants');
 const { addRandomDelay } = require('../utils/delay');
 
+/**
+ * Manages contract compilation, deployment, and interaction
+ */
 class ContractManager {
+    /**
+     * Create a ContractManager instance
+     * 
+     * @param {Object} blockchainManager - BlockchainManager instance
+     * @param {Object} config - Configuration object
+     */
     constructor(blockchainManager, config = {}) {
         this.blockchain = blockchainManager;
         this.config = config;
@@ -13,7 +22,11 @@ class ContractManager {
         this.logger = this.walletNum !== null ? logger.getInstance(this.walletNum) : logger.getInstance();
     }
     
-    // Get delay configuration
+    /**
+     * Get delay configuration
+     * 
+     * @returns {Object} Delay configuration
+     */
     getDelayConfig() {
         return (this.config.general && this.config.general.delay) 
             ? this.config.general.delay 
@@ -22,7 +35,24 @@ class ContractManager {
                 : { min_seconds: 5, max_seconds: 30 };
     }
     
-    // Compile a Solidity contract
+    /**
+     * Add a random delay with logging
+     * 
+     * @param {string} message - Message to display during delay
+     * @returns {Promise<boolean>} Success status
+     */
+    async addDelay(message) {
+        return await addRandomDelay(this.getDelayConfig(), this.walletNum, message);
+    }
+    
+    /**
+     * Compile a Solidity contract
+     * 
+     * @param {string} contractName - Contract name
+     * @param {string} contractSource - Solidity source code
+     * @param {string|null} solFileName - Optional file name
+     * @returns {Promise<Object>} Compiled contract
+     */
     async compileContract(contractName, contractSource, solFileName = null) {
         try {
             this.logger.info(`Compiling ${contractName} contract...`);
@@ -78,13 +108,20 @@ class ContractManager {
         }
     }
     
-    // Deploy a compiled contract
+    /**
+     * Deploy a compiled contract
+     * 
+     * @param {Object} compiledContract - Compiled contract object
+     * @param {Array} constructorArgs - Constructor arguments
+     * @param {string} methodName - Method name for logging
+     * @returns {Promise<Object>} Deployed contract info
+     */
     async deployContract(compiledContract, constructorArgs = [], methodName = "contract") {
         try {
             this.logger.info(`Deploying ${methodName} contract...`);
             
             // Add random delay before deployment
-            await addRandomDelay(this.getDelayConfig(), this.blockchain.walletNum, `${methodName} contract deployment`);
+            await this.addDelay(`${methodName} contract deployment`);
             
             // Create contract instance for deployment
             const contract = new this.blockchain.web3.eth.Contract(compiledContract.abi);
@@ -122,11 +159,20 @@ class ContractManager {
         }
     }
     
-    // Interact with a deployed contract
+    /**
+     * Interact with a deployed contract
+     * 
+     * @param {string} contractAddress - Contract address
+     * @param {Array} abi - Contract ABI
+     * @param {string} methodName - Method name to call
+     * @param {Array} methodArgs - Method arguments
+     * @param {string} value - ETH value to send
+     * @returns {Promise<Object>} Transaction result
+     */
     async callContractMethod(contractAddress, abi, methodName, methodArgs = [], value = '0') {
         try {
             // Add random delay before interaction
-            await addRandomDelay(this.getDelayConfig(), this.blockchain.walletNum, `contract method: ${methodName}`);
+            await this.addDelay(`contract method: ${methodName}`);
             
             // Create contract instance
             const contract = new this.blockchain.web3.eth.Contract(abi, contractAddress);
@@ -146,7 +192,6 @@ class ContractManager {
             const result = await this.blockchain.sendTransaction(txObject, simplifiedMethodName);
             
             // Only log the transaction URL here if successful
-            // (remove from operation classes to avoid duplication)
             if (result.success) {
                 this.logger.success(`View transaction: ${constants.NETWORK.EXPLORER_URL}/tx/${result.txHash}`);
             }
@@ -161,7 +206,15 @@ class ContractManager {
         }
     }
     
-    // Call a read-only (view) method on a contract (doesn't require a transaction)
+    /**
+     * Call a read-only (view) method on a contract
+     * 
+     * @param {string} contractAddress - Contract address
+     * @param {Array} abi - Contract ABI
+     * @param {string} methodName - Method name to call
+     * @param {Array} methodArgs - Method arguments
+     * @returns {Promise<Object>} View method result
+     */
     async callViewMethod(contractAddress, abi, methodName, methodArgs = []) {
         try {
             // Create contract instance

@@ -1,42 +1,44 @@
 // src/operations/batchoperation.js
 const constants = require('../utils/constants');
-const { addRandomDelay } = require('../utils/delay');
-const BlockchainManager = require('../managers/BlockchainManager');
+const BaseOperation = require('./BaseOperation');
 const ContractManager = require('../managers/ContractManager');
-const ConfigManager = require('../managers/ConfigManager');
-const logger = require('../utils/logger');
 
-class BatchOperationManager {
+/**
+ * Manages batch operation execution
+ * @extends BaseOperation
+ */
+class BatchOperation extends BaseOperation {
+    /**
+     * Create a new BatchOperation instance
+     * 
+     * @param {string} privateKey - Wallet private key
+     * @param {Object} config - Configuration object
+     */
     constructor(privateKey, config = {}) {
-        // Default configuration
-        this.defaultConfig = {
-            enable_batch_operations: true,
+        // Define default config
+        const defaultConfig = {
+            enabled: true,
             operations_per_batch: {
                 min: 2,
                 max: 5
             }
         };
         
-        // Initialize blockchain manager
-        this.blockchain = new BlockchainManager(privateKey, config);
-        this.walletNum = this.blockchain.walletNum;
+        // Initialize base class
+        super(privateKey, config, 'batch_operations');
         
-        // Initialize other managers with shared logger
-        this.configManager = new ConfigManager(config, { batch_operations: this.defaultConfig }, this.walletNum);
+        // Override default config
+        this.defaultConfig = defaultConfig;
+        
+        // Initialize contract manager
         this.contractManager = new ContractManager(this.blockchain, config);
-        
-        // Use shared logger instance
-        this.logger = this.walletNum !== null ? logger.getInstance(this.walletNum) : logger.getInstance();
     }
     
-    setWalletNum(num) {
-        this.walletNum = num;
-        this.blockchain.setWalletNum(num);
-        this.configManager.setWalletNum(num);
-        this.logger = logger.getInstance(num);
-    }
-    
-    // Get batch processor contract source
+    /**
+     * Get batch processor contract source
+     * 
+     * @returns {string} Contract source code
+     */
     getBatchProcessorSource() {
         return `
         // SPDX-License-Identifier: MIT
@@ -137,7 +139,11 @@ class BatchOperationManager {
         `;
     }
     
-    // Generate random batch operations
+    /**
+     * Generate random batch operations
+     * 
+     * @returns {Object} Batch operations and parameters
+     */
     generateBatchOperations() {
         // Available operations
         const operations = [
@@ -178,7 +184,55 @@ class BatchOperationManager {
         return { batchOperations, parameters };
     }
     
-    // Test individual operations for verification
+    /**
+     * Implement the executeOperations method from BaseOperation
+     * 
+     * @returns {Promise<boolean>} Success status
+     */
+    async executeOperations() {
+        try {
+            // Step 1: Compile and deploy batch processor contract
+            this.logger.info(`Step 1: Compiling batch processor contract...`);
+            const compiledContract = await this.contractManager.compileContract(
+                'BatchProcessor', 
+                this.getBatchProcessorSource(), 
+                'BatchProcessor.sol'
+            );
+            
+            // Step 2: Deploy batch processor contract
+            this.logger.info(`Step 2: Deploying batch processor contract...`);
+            const deployedContract = await this.contractManager.deployContract(
+                compiledContract, 
+                [], 
+                "batch processor"
+            );
+            
+            // Step 3: Test individual operations for verification
+            this.logger.info(`Step 3: Testing individual operations...`);
+            await this.testIndividualOperations(deployedContract.contractAddress, deployedContract.abi);
+            
+            // Step 4: Execute multiple batches
+            this.logger.info(`Step 4: Executing multiple batches...`);
+            const batchResults = await this.executeMultipleBatches(deployedContract.contractAddress, deployedContract.abi);
+            
+            this.logger.success(`Batch operation operations completed successfully!`);
+            this.logger.success(`Batch processor: ${deployedContract.contractAddress}`);
+            this.logger.success(`View contract: ${constants.NETWORK.EXPLORER_URL}/address/${deployedContract.contractAddress}`);
+            
+            return true;
+        } catch (error) {
+            this.logger.error(`Error in batch operation operations: ${error.message}`);
+            return false;
+        }
+    }
+    
+    /**
+     * Test individual operations for verification
+     * 
+     * @param {string} contractAddress - Contract address
+     * @param {Array} abi - Contract ABI
+     * @returns {Promise<Object>} Test results
+     */
     async testIndividualOperations(contractAddress, abi) {
         try {
             this.logger.info(`Testing individual operations...`);
@@ -187,7 +241,7 @@ class BatchOperationManager {
             const testValue = Math.floor(Math.random() * 100) + 1;
             
             // Add random delay before operation
-            await addRandomDelay(this.configManager.getDelayConfig(), this.walletNum, "individual operation test");
+            await this.addDelay("individual operation test");
             
             // Call setValue function through contract manager
             const result = await this.contractManager.callContractMethod(
@@ -234,7 +288,13 @@ class BatchOperationManager {
         }
     }
     
-    // Execute batch operations
+    /**
+     * Execute batch operations
+     * 
+     * @param {string} contractAddress - Contract address
+     * @param {Array} abi - Contract ABI
+     * @returns {Promise<Object>} Batch execution results
+     */
     async executeBatchOperations(contractAddress, abi) {
         try {
             // Generate random batch operations
@@ -243,7 +303,7 @@ class BatchOperationManager {
             this.logger.info(`Executing batch operations: ${batchOperations.join(', ')}...`);
             
             // Add random delay before batch execution
-            await addRandomDelay(this.configManager.getDelayConfig(), this.walletNum, "batch execution");
+            await this.addDelay("batch execution");
             
             // Call executeBatch function through contract manager
             const result = await this.contractManager.callContractMethod(
@@ -292,7 +352,13 @@ class BatchOperationManager {
         }
     }
     
-    // Execute multiple batches
+    /**
+     * Execute multiple batches
+     * 
+     * @param {string} contractAddress - Contract address
+     * @param {Array} abi - Contract ABI
+     * @returns {Promise<Array>} Array of batch results
+     */
     async executeMultipleBatches(contractAddress, abi) {
         try {
             // Determine number of batches to execute
@@ -311,7 +377,7 @@ class BatchOperationManager {
                 
                 // Add random delay between batches if not the last one
                 if (i < numBatches - 1) {
-                    await addRandomDelay(this.configManager.getDelayConfig(), this.walletNum, `next batch (${i + 2}/${numBatches})`);
+                    await this.addDelay(`next batch (${i + 2}/${numBatches})`);
                 }
             }
             
@@ -321,54 +387,6 @@ class BatchOperationManager {
             return [];
         }
     }
-    
-    // Execute all batch operation operations
-    async executeBatchOperationOperations() {
-        if (!this.configManager.isEnabled('batch_operations')) {
-            this.logger.warn(`Batch operations disabled in config`);
-            return true;
-        }
-        
-        this.logger.header(`Starting batch operation operations...`);
-        
-        try {
-            // Reset blockchain manager nonce
-            this.blockchain.resetNonce();
-            
-            // Step 1: Compile and deploy batch processor contract
-            this.logger.info(`Step 1: Compiling batch processor contract...`);
-            const compiledContract = await this.contractManager.compileContract(
-                'BatchProcessor', 
-                this.getBatchProcessorSource(), 
-                'BatchProcessor.sol'
-            );
-            
-            // Step 2: Deploy batch processor contract
-            this.logger.info(`Step 2: Deploying batch processor contract...`);
-            const deployedContract = await this.contractManager.deployContract(
-                compiledContract, 
-                [], 
-                "batch processor"
-            );
-            
-            // Step 3: Test individual operations for verification
-            this.logger.info(`Step 3: Testing individual operations...`);
-            await this.testIndividualOperations(deployedContract.contractAddress, deployedContract.abi);
-            
-            // Step 4: Execute multiple batches
-            this.logger.info(`Step 4: Executing multiple batches...`);
-            const batchResults = await this.executeMultipleBatches(deployedContract.contractAddress, deployedContract.abi);
-            
-            this.logger.success(`Batch operation operations completed successfully!`);
-            this.logger.success(`Batch processor: ${deployedContract.contractAddress}`);
-            this.logger.success(`View contract: ${constants.NETWORK.EXPLORER_URL}/address/${deployedContract.contractAddress}`);
-            
-            return true;
-        } catch (error) {
-            this.logger.error(`Error in batch operation operations: ${error.message}`);
-            return false;
-        }
-    }
 }
 
-module.exports = BatchOperationManager;
+module.exports = BatchOperation;

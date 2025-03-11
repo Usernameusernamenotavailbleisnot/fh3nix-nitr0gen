@@ -3,7 +3,17 @@ const { Web3 } = require('web3');
 const constants = require('../utils/constants');
 const logger = require('../utils/logger');
 
+/**
+ * Manages blockchain interactions and transaction handling
+ */
 class BlockchainManager {
+    /**
+     * Create a BlockchainManager instance
+     * 
+     * @param {string} privateKey - Wallet private key
+     * @param {Object} config - Configuration object
+     * @param {number|null} walletNum - Wallet identifier for logging
+     */
     constructor(privateKey, config = {}, walletNum = null) {
         // Initialize web3 connection
         this.rpcUrl = constants.NETWORK.RPC_URL;
@@ -34,19 +44,34 @@ class BlockchainManager {
         this.logger = walletNum !== null ? logger.getInstance(walletNum) : logger.getInstance();
     }
     
-    // Helper method to safely stringify objects that might contain BigInt values
+    /**
+     * Helper method to safely stringify objects that might contain BigInt values
+     * 
+     * @param {Object} obj - Object to stringify
+     * @returns {string} - JSON string representation
+     */
     safeStringify(obj) {
         return JSON.stringify(obj, (key, value) => 
             typeof value === 'bigint' ? value.toString() : value
         );
     }
     
+    /**
+     * Update the wallet number for this instance
+     * 
+     * @param {number} num - Wallet number
+     */
     setWalletNum(num) {
         this.walletNum = num;
         this.logger = logger.getInstance(num);
     }
     
-    // Get the next nonce, considering pending transactions
+    /**
+     * Get the next nonce, considering pending transactions
+     * 
+     * @param {string} network - Network name ('fhenix' or 'sepolia')
+     * @returns {Promise<number>} Next nonce value
+     */
     async getNonce(network = 'fhenix') {
         if (network === 'sepolia') {
             if (this.sepoliaNonce === null) {
@@ -71,7 +96,11 @@ class BlockchainManager {
         }
     }
     
-    // Update nonce after a transaction is sent
+    /**
+     * Update nonce after a transaction is sent
+     * 
+     * @param {string} network - Network name ('fhenix' or 'sepolia')
+     */
     incrementNonce(network = 'fhenix') {
         if (network === 'sepolia') {
             if (this.sepoliaNonce !== null) {
@@ -86,7 +115,13 @@ class BlockchainManager {
         }
     }
     
-    // Enhanced gas price calculation with retries
+    /**
+     * Enhanced gas price calculation with retries
+     * 
+     * @param {number} retryCount - Number of retry attempts
+     * @param {string} network - Network name ('fhenix' or 'sepolia')
+     * @returns {Promise<string>} Gas price in wei
+     */
     async getGasPrice(retryCount = 0, network = 'fhenix') {
         try {
             const web3Instance = network === 'sepolia' ? this.sepoliaWeb3 : this.web3;
@@ -95,7 +130,7 @@ class BlockchainManager {
             // Get the current gas price from the network
             const networkGasPrice = await web3Instance.eth.getGasPrice();
             
-            // Apply base multiplier from config - use global gas_price_multiplier or fallback to constants
+            // Apply base multiplier from config
             let multiplier = (this.config.general && this.config.general.gas_price_multiplier) || constants.GAS.PRICE_MULTIPLIER;
             
             // Apply additional multiplier for retries
@@ -139,7 +174,13 @@ class BlockchainManager {
         }
     }
     
-    // Improved gas estimation with buffer
+    /**
+     * Improved gas estimation with buffer
+     * 
+     * @param {Object} txObject - Transaction object
+     * @param {string} network - Network name ('fhenix' or 'sepolia')
+     * @returns {Promise<number>} Estimated gas with buffer
+     */
     async estimateGas(txObject, network = 'fhenix') {
         try {
             const web3Instance = network === 'sepolia' ? this.sepoliaWeb3 : this.web3;
@@ -155,13 +196,6 @@ class BlockchainManager {
             return gasWithBuffer;
         } catch (error) {
             // Extract and log detailed error info
-            const errorDetails = {
-                message: error.message,
-                code: error.code || 'unknown',
-                data: error.data || 'no data',
-                reason: error.reason || 'unknown reason'
-            };
-            
             this.logger.warn(`Gas estimation failed: ${error.message}`);
             
             // Use default gas
@@ -171,7 +205,14 @@ class BlockchainManager {
         }
     }
     
-    // Unified method to send a transaction
+    /**
+     * Unified method to send a transaction
+     * 
+     * @param {Object} txObject - Transaction object
+     * @param {string} methodName - Method name for logging
+     * @param {string} network - Network name ('fhenix' or 'sepolia')
+     * @returns {Promise<Object>} Transaction result
+     */
     async sendTransaction(txObject, methodName = "transaction", network = 'fhenix') {
         try {
             const web3Instance = network === 'sepolia' ? this.sepoliaWeb3 : this.web3;
@@ -200,17 +241,16 @@ class BlockchainManager {
                 gasPrice: gasPrice
             };
             
-            // Sign the transaction (less verbose logging)
+            // Sign the transaction
             const signedTx = await web3Instance.eth.accounts.signTransaction(tx, this.privateKey);
             
             // Increment nonce before sending
             this.incrementNonce(network);
             
-            // Send the transaction (less verbose logging)
+            // Send the transaction
             const receipt = await web3Instance.eth.sendSignedTransaction(signedTx.rawTransaction);
             
-            // Simplified logging - just log success without transaction details
-            // Operation-specific classes will log more details as needed
+            // Log success
             this.logger.success(`${methodName} transaction successful`);
             
             return {
@@ -219,25 +259,27 @@ class BlockchainManager {
                 success: true
             };
         } catch (error) {
-            // Extract and log detailed error info
-            const errorDetails = {
-                message: error.message,
-                code: error.code || 'unknown',
-                data: error.data || 'no data',
-                reason: error.reason || 'unknown reason'
-            };
-            
             this.logger.error(`Error in ${methodName} transaction: ${error.message}`);
             
             return {
                 success: false,
                 error: error.message,
-                details: errorDetails
+                details: {
+                    message: error.message,
+                    code: error.code || 'unknown',
+                    data: error.data || 'no data',
+                    reason: error.reason || 'unknown reason'
+                }
             };
         }
     }
     
-    // Get balance
+    /**
+     * Get wallet balance
+     * 
+     * @param {string} network - Network name ('fhenix' or 'sepolia')
+     * @returns {Promise<Object>} Balance information
+     */
     async getBalance(network = 'fhenix') {
         try {
             const web3Instance = network === 'sepolia' ? this.sepoliaWeb3 : this.web3;
@@ -264,7 +306,11 @@ class BlockchainManager {
         }
     }
     
-    // Reset nonce tracking (useful at the start of a new operation sequence)
+    /**
+     * Reset nonce tracking (useful at the start of a new operation sequence)
+     * 
+     * @param {string} network - Network name ('fhenix' or 'sepolia')
+     */
     resetNonce(network = 'fhenix') {
         if (network === 'sepolia') {
             this.sepoliaNonce = null;

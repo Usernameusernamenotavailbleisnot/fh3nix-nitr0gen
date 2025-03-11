@@ -1,10 +1,12 @@
 {
   "name": "fh3nix-nitr0gen",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Automation tool for fh3nix-nitr0gen Testnet",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "lint": "eslint .",
+    "test": "jest"
   },
   "keywords": [
     "blockchain",
@@ -28,5 +30,12 @@
     "path": "^0.12.7",
     "solc": "^0.8.21",
     "web3": "^4.3.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.55.0",
+    "jest": "^29.7.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }
