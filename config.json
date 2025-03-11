@@ -1,7 +1,7 @@
 {
   "operations": {
     "bridge": {
-      "enabled": false,
+      "enabled": true,
       "amount": {
         "min": 0.0001,
         "max": 0.0004,
@@ -11,7 +11,7 @@
     },
     "transfer": {
       "enabled": true,
-      "use_percentage": false,
+      "use_percentage": true,
       "percentage": 90,
       "fixed_amount": {
         "min": 0.001,
@@ -25,9 +25,9 @@
       "repeat_times": 2
     },
     "contract_deploy": {
-      "enabled": false,
+      "enabled": true,
       "interactions": {
-        "enabled": false,
+        "enabled": true,
         "count": {
           "min": 3,
           "max": 8
@@ -36,7 +36,7 @@
       }
     },
     "contract_testing": {
-      "enabled": false,
+      "enabled": true,
       "test_sequences": ["parameter_variation", "stress_test", "boundary_test"],
       "iterations": {
         "min": 2,
@@ -44,12 +44,12 @@
       }
     },
     "random_contract": {
-      "enabled": false,
+      "enabled": true,
       "max_gas": 3000000,
       "repeat_times": 1
     },
     "random_token": {
-      "enabled": false,
+      "enabled": true,
       "max_gas": 3000000,
       "supply": {
         "min": 1000000,
@@ -58,7 +58,7 @@
       "repeat_times": 1
     },
     "erc20": {
-      "enabled": false,
+      "enabled": true,
       "mint_amount": {
         "min": 1000000,
         "max": 10000000
@@ -67,7 +67,7 @@
       "decimals": 18
     },
     "nft": {
-      "enabled": false,
+      "enabled": true,
       "mint_count": {
         "min": 2,
         "max": 5
@@ -79,7 +79,7 @@
       }
     },
     "batch_operations": {
-      "enabled": false,
+      "enabled": true,
       "operations_per_batch": {
         "min": 2,
         "max": 3
@@ -89,15 +89,15 @@
   "general": {
     "gas_price_multiplier": 1.2,
     "max_retries": 5,
-    "base_wait_time": 1,
+    "base_wait_time": 5,
     "delay": {
-      "min_seconds": 1,
-      "max_seconds": 1
+      "min_seconds": 5,
+      "max_seconds": 30
     }
   },
   "randomization": {
-    "enable": false,
-    "excluded_operations": [],
+    "enable": true,
+    "excluded_operations": ["bridge"],
     "operations_to_run": ["bridge", "transfer", "contract_deploy", "contract_testing", "erc20", "nft", "batch_operations", "random_contract", "random_token"]
   }
 }
