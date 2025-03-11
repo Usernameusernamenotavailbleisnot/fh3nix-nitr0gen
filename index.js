@@ -5,6 +5,7 @@ const chalk = require('chalk');
 const logger = require('./src/utils/logger');
 const ConfigManager = require('./src/managers/ConfigManager');
 const { addRandomDelay } = require('./src/utils/delay');
+const { showBanner } = require('./src/utils/banner');
 
 // Import operation modules
 const TokenTransfer = require('./src/operations/transfer');
@@ -126,9 +127,8 @@ async function loadConfig() {
         logger.error(`Error loading configuration: ${error.message}`);
         // Return default configuration as fallback
         return {
-            // Default configuration here (same as above)
+            // Sama seperti default di atas
             operations: {
-                // Copy of above default
                 bridge: {
                     enabled: false,
                     amount: {
@@ -498,13 +498,14 @@ async function main() {
     while (true) {
         // Start with global logger (no wallet context)
         logger.setWalletNum(null);
-        const mainLogger = logger.getInstance();
-        mainLogger.header('Fhenix Nitrogen Testnet Automation Tool');
+        
+        // Tampilkan ASCII banner saat startup
+        showBanner();
 
         try {
             // Load configuration
             const config = await loadConfig();
-            mainLogger.success(`Configuration loaded`);
+            logger.success(`Configuration loaded`);
             
             // Create config manager (tanpa wallet num dahulu)
             const configManager = new ConfigManager(config);
@@ -518,14 +519,14 @@ async function main() {
                 .map(line => line.trim())
                 .filter(line => line);
 
-            mainLogger.success(`Found ${privateKeys.length} private keys`);
-            mainLogger.info(`Initializing automation...`);
+            logger.success(`Found ${privateKeys.length} private keys`);
+            logger.info(`Initializing automation...`);
 
             // Create instances of our modules
             const tokenTransfer = new TokenTransfer(config);
 
             // Process wallets - use global logger for this header
-            mainLogger.header(`Processing ${privateKeys.length} wallets...`);
+            logger.header(`Processing ${privateKeys.length} wallets...`);
 
             for (let i = 0; i < privateKeys.length; i++) {
                 const walletNum = i + 1;
@@ -593,7 +594,7 @@ async function main() {
 
             // Reset to global logger for completion message
             logger.setWalletNum(null);
-            mainLogger.header('Wallet processing completed! Starting 8-hour countdown...');
+            logger.header('Wallet processing completed! Starting 8-hour countdown...');
 
             // Start the countdown timer
             await countdownTimer(8);

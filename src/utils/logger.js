@@ -1,3 +1,4 @@
+// src/utils/logger.js
 const chalk = require('chalk');
 
 // Enhanced Singleton pattern for Logger
@@ -37,14 +38,27 @@ class Logger {
         return {
             walletNum,
             
-            // Get a timestamp string for logging
+            // Get a timestamp string for logging dengan format tanggal sederhana
             getTimestamp() {
                 const now = new Date();
-                const timestamp = now.toLocaleTimeString('en-US', { hour12: false });
+                
+                // Format tanggal DD/MM/YYYY
+                const day = String(now.getDate()).padStart(2, '0');
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const year = now.getFullYear();
+                const formattedDate = `${day}/${month}/${year}`;
+                
+                // Format waktu HH:MM:SS
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                const seconds = String(now.getSeconds()).padStart(2, '0');
+                const formattedTime = `${hours}:${minutes}:${seconds}`;
+                
+                // Gabungkan sesuai format yang diminta: [DD/MM/YYYY - HH:MM:SS - Wallet X]
                 if (this.walletNum !== null) {
-                    return `[${timestamp} - Wallet ${this.walletNum}]`;
+                    return `[${formattedDate} - ${formattedTime} - Wallet ${this.walletNum}]`;
                 }
-                return `[${timestamp} - System]`; // Add "System" to non-wallet logs for clarity
+                return `[${formattedDate} - ${formattedTime} - System]`;
             },
             
             // Regular info message
@@ -67,9 +81,15 @@ class Logger {
                 console.log(chalk.red(`${this.getTimestamp()} ✗ ${message}`));
             },
             
-            // Bold header
+            // Bold header dengan pembatas
             header(message) {
-                console.log(chalk.blue.bold(`\n${this.getTimestamp()} ${message}\n`));
+                // Buat pembatas dengan lebar 80 karakter
+                const divider = chalk.blue("═".repeat(80));
+                
+                // Tampilkan pembatas atas, header, dan pembatas bawah
+                console.log(`\n${divider}`);
+                console.log(chalk.blue.bold(`${this.getTimestamp()} ${message}`));
+                console.log(`${divider}\n`);
             },
             
             // Log with custom chalk style
