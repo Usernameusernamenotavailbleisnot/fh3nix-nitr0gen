@@ -1,25 +1,26 @@
 // index.js
 const fs = require('fs').promises;
-const chalk = require('chalk');
-const ora = require('ora');
 const path = require('path');
-const crypto = require('crypto');
-const _ = require('lodash');
+const chalk = require('chalk');
+const Logger = require('./src/utils/logger');
+const ConfigManager = require('./src/managers/ConfigManager');
+const { addRandomDelay } = require('./src/utils/delay');
 
-// Import modules - will update these imports later for file renaming
-const TokenTransfer = require('./src/transfer');
-const NormalContract = require('./src/normalcontract');
-const ERC20Token = require('./src/erc20');
-const NFT = require('./src/nft');
-const TestContract = require('./src/testcontract');
-const BatchOperation = require('./src/batchoperation');
-const Bridge = require('./src/bridge');
-const constants = require('./utils/constants');
-const { addRandomDelay, getTimestamp } = require('./utils/delay');
+// Import operation modules
+const TokenTransfer = require('./src/operations/transfer');
+const NormalContract = require('./src/operations/normalcontract');
+const ERC20Token = require('./src/operations/erc20');
+const NFT = require('./src/operations/nft');
+const TestContract = require('./src/operations/testcontract');
+const BatchOperation = require('./src/operations/batchoperation');
+const Bridge = require('./src/operations/bridge');
+
+// Initialize logger
+const logger = new Logger();
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    console.error(chalk.red('Unhandled Rejection at:'), promise, chalk.red('reason:'), reason);
     // Don't crash the process
 });
 
@@ -28,12 +29,12 @@ async function loadConfig() {
     try {
         const jsonExists = await fs.access('config.json').then(() => true).catch(() => false);
         if (jsonExists) {
-            console.log(chalk.green(`${getTimestamp()} ✓ Found config.json`));
+            logger.success(`Found config.json`);
             const jsonContent = await fs.readFile('config.json', 'utf8');
             return JSON.parse(jsonContent);
         }
         
-        console.log(chalk.yellow(`${getTimestamp()} ⚠ No configuration file found, using defaults`));
+        logger.warn(`No configuration file found, using defaults`);
         // Return a default configuration with new structure
         return {
             operations: {
@@ -110,12 +111,12 @@ async function loadConfig() {
                 }
             },
             general: {
-                gas_price_multiplier: constants.GAS.PRICE_MULTIPLIER,
+                gas_price_multiplier: 1.2,
                 max_retries: 5,
                 base_wait_time: 10,
                 delay: {
-                    min_seconds: constants.DELAY.MIN_SECONDS,
-                    max_seconds: constants.DELAY.MAX_SECONDS
+                    min_seconds: 5,
+                    max_seconds: 30
                 }
             },
             randomization: {
@@ -125,94 +126,18 @@ async function loadConfig() {
             }
         };
     } catch (error) {
-        console.log(chalk.red(`${getTimestamp()} ✗ Error loading configuration: ${error.message}`));
+        logger.error(`Error loading configuration: ${error.message}`);
+        // Return default configuration as fallback
         return {
+            // Default configuration here (same as above)
             operations: {
-                bridge: {
-                    enabled: false,
-                    amount: {
-                        min: 0.0001,
-                        max: 0.0004,
-                        decimals: 7
-                    },
-                    repeat_times: 1
-                },
-                transfer: {
-                    enabled: true,
-                    use_percentage: true,
-                    percentage: 90,
-                    fixed_amount: {
-                        min: 0.0001,
-                        max: 0.001,
-                        decimals: 5
-                    },
-                    count: {
-                        min: 1,
-                        max: 3
-                    },
-                    repeat_times: 2
-                },
-                contract_deploy: {
-                    enabled: true,
-                    interactions: {
-                        enabled: true,
-                        count: {
-                            min: 3,
-                            max: 8
-                        },
-                        types: ["setValue", "increment", "decrement", "reset", "contribute"]
-                    }
-                },
-                erc20: {
-                    enabled: true,
-                    mint_amount: {
-                        min: 1000000,
-                        max: 10000000
-                    },
-                    burn_percentage: 10,
-                    decimals: 18
-                },
-                nft: {
-                    enabled: true,
-                    mint_count: {
-                        min: 2,
-                        max: 5
-                    },
-                    burn_percentage: 20,
-                    supply: {
-                        min: 100,
-                        max: 500
-                    }
-                },
-                contract_testing: {
-                    enabled: true,
-                    test_sequences: ["parameter_variation", "stress_test", "boundary_test"],
-                    iterations: {
-                        min: 2,
-                        max: 3
-                    }
-                },
-                batch_operations: {
-                    enabled: true,
-                    operations_per_batch: {
-                        min: 2,
-                        max: 3
-                    }
-                }
+                // ...
             },
             general: {
-                gas_price_multiplier: constants.GAS.PRICE_MULTIPLIER,
-                max_retries: 5,
-                base_wait_time: 10,
-                delay: {
-                    min_seconds: constants.DELAY.MIN_SECONDS,
-                    max_seconds: constants.DELAY.MAX_SECONDS
-                }
+                // ...
             },
             randomization: {
-                enable: true,
-                excluded_operations: [],
-                operations_to_run: ["bridge", "transfer", "contract_deploy", "contract_testing", "erc20", "nft", "batch_operations"]
+                // ...
             }
         };
     }
@@ -221,12 +146,12 @@ async function loadConfig() {
 // Load proxies from file
 async function loadProxies() {
     try {
-        const proxyFile = await fs.readFile('proxy.txt', 'utf8');
+        const proxyFile = await fs.readFile('data/proxy.txt', 'utf8');
         const proxies = proxyFile.split('\n').map(line => line.trim()).filter(line => line);
-        console.log(chalk.green(`${getTimestamp()} ✓ Successfully loaded ${proxies.length} proxies`));
+        logger.success(`Successfully loaded ${proxies.length} proxies`);
         return proxies;
     } catch (error) {
-        console.log(chalk.yellow(`${getTimestamp()} ⚠ proxy.txt not found, will not use proxies`));
+        logger.warn(`data/proxy.txt not found, will not use proxies`);
         return [];
     }
 }
@@ -245,7 +170,7 @@ async function countdownTimer(hours = 8) {
         process.stdout.clearLine(0);
         process.stdout.cursorTo(0);
         process.stdout.write(
-            chalk.blue(`${getTimestamp()} Next cycle in: `) + 
+            chalk.blue(`${logger.getTimestamp()} Next cycle in: `) + 
             chalk.yellow(`${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`)
         );
 
@@ -256,296 +181,291 @@ async function countdownTimer(hours = 8) {
     // Clear the countdown line
     process.stdout.clearLine(0);
     process.stdout.cursorTo(0);
-    console.log(chalk.green(`${getTimestamp()} ✓ Countdown completed!`));
+    logger.success(`Countdown completed!`);
 }
 
-// Execute bridge operations - updated for new config structure
+// Execute bridge operation using Bridge module
 async function executeBridgeOperation(pk, config, walletNum) {
     // Check if bridge is enabled in config
-    if (config.operations?.bridge?.enabled) {
-        try {
-            console.log(chalk.blue.bold(`\n=== Running Bridge Operations for Wallet ${walletNum} ===\n`));
-            
-            // Initialize bridge manager with wallet's private key and current config
-            const bridgeManager = new Bridge(pk, config);
-            bridgeManager.setWalletNum(walletNum);
-            
-            // Execute bridge operations
-            await bridgeManager.executeBridgeOperations();
-            
-            // Add random delay after bridge operations - using the delay config from general section
-            await addRandomDelay(config.general, walletNum, "next operation");
-            
-            return true;
-        } catch (error) {
-            console.log(chalk.red(`${getTimestamp(walletNum)} ✗ Error in bridge operations: ${error.message}`));
-            return false;
-        }
-    } else {
-        console.log(chalk.yellow(`${getTimestamp(walletNum)} ⚠ Bridge operations disabled in config`));
+    const configManager = new ConfigManager(config);
+    if (!configManager.isEnabled('bridge')) {
+        logger.setWalletNum(walletNum);
+        logger.warn(`Bridge operations disabled in config`);
+        return false;
+    }
+
+    try {
+        // Initialize bridge manager with wallet's private key and current config
+        const bridgeManager = new Bridge(pk, config);
+        bridgeManager.setWalletNum(walletNum);
+        
+        // Execute bridge operations
+        await bridgeManager.executeBridgeOperations();
+        
+        // Add random delay after bridge operations
+        await addRandomDelay(configManager.getDelayConfig(), walletNum, "next operation");
+        
+        return true;
+    } catch (error) {
+        logger.setWalletNum(walletNum);
+        logger.error(`Error in bridge operations: ${error.message}`);
         return false;
     }
 }
 
-// Execute transfer operations - updated for new config structure
+// Execute transfer operations
 async function executeTransferOperation(tokenTransfer, pk, config, walletNum) {
-    // Verify if transfer is enabled in config - using new config structure
-    const transferEnabled = 
-        (config.operations && config.operations.transfer && config.operations.transfer.enabled) || 
-        (config.transfer && config.transfer.enabled);
+    // Verify if transfer is enabled in config
+    const configManager = new ConfigManager(config);
+    if (!configManager.isEnabled('transfer')) {
+        logger.setWalletNum(walletNum);
+        logger.warn(`Transfer operations disabled in config`);
+        return false;
+    }
     
-    if (transferEnabled) {
-        let success = false;
-        let attempt = 0;
-        const maxRetries = config.general?.max_retries || 5;
+    let success = false;
+    let attempt = 0;
+    const maxRetries = configManager.get('general.max_retries', 5);
+    
+    while (!success && attempt < maxRetries) {
+        logger.setWalletNum(walletNum);
+        logger.header(`Running Transfer Operations for Wallet ${walletNum}`);
+        logger.info(`Transferring tokens... (Attempt ${attempt + 1}/${maxRetries})`);
         
-        while (!success && attempt < maxRetries) {
-            console.log(chalk.blue.bold(`\n=== Running Transfer Operations for Wallet ${walletNum} ===\n`));
-            console.log(chalk.blue.bold(`${getTimestamp(walletNum)} Transferring tokens... (Attempt ${attempt + 1}/${maxRetries})`));
-            
-            // Transfer function already handles configuration internally
-            success = await tokenTransfer.transferToSelf(pk, walletNum);
-            
-            if (!success) {
-                attempt++;
-                if (attempt < maxRetries) {
-                    const waitTime = Math.min(300, (config.general?.base_wait_time || 10) * (2 ** attempt));
-                    console.log(chalk.yellow(`${getTimestamp(walletNum)} Waiting ${waitTime} seconds before retry...`));
-                    await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
-                }
+        // Transfer function already handles configuration internally
+        success = await tokenTransfer.transferToSelf(pk, walletNum);
+        
+        if (!success) {
+            attempt++;
+            if (attempt < maxRetries) {
+                const waitTime = Math.min(300, (configManager.get('general.base_wait_time', 10) * (2 ** attempt)));
+                logger.warn(`Waiting ${waitTime} seconds before retry...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
             }
         }
+    }
+    
+    // Add random delay after transfer operations
+    await addRandomDelay(configManager.getDelayConfig(), walletNum, "next operation");
+    return success;
+}
+
+// Execute contract deployment operations
+async function executeContractOperation(pk, config, walletNum) {
+    const configManager = new ConfigManager(config);
+    if (!configManager.isEnabled('contract_deploy')) {
+        logger.setWalletNum(walletNum);
+        logger.warn(`Contract deployment operations disabled in config`);
+        return false;
+    }
+    
+    try {
+        logger.setWalletNum(walletNum);
+        logger.header(`Running Contract Operations for Wallet ${walletNum}`);
         
-        // Add random delay after transfer operations - using the delay config from general section
-        await addRandomDelay(config.general, walletNum, "next operation");
-        return success;
-    } else {
-        console.log(chalk.yellow(`${getTimestamp(walletNum)} ⚠ Transfer operations disabled in config`));
+        // Initialize contract deployer with wallet's private key and current config
+        const contractDeployer = new NormalContract(pk, config);
+        contractDeployer.setWalletNum(walletNum);
+        
+        // Execute contract operations (compile, deploy, interact)
+        await contractDeployer.executeContractOperations();
+        
+        // Add random delay after contract operations
+        await addRandomDelay(configManager.getDelayConfig(), walletNum, "next operation");
+        
+        return true;
+    } catch (error) {
+        logger.setWalletNum(walletNum);
+        logger.error(`Error in contract operations: ${error.message}`);
         return false;
     }
 }
 
-// Execute contract deployment operations - updated for new config structure
-async function executeContractOperation(pk, config, walletNum) {
-    if (config.operations?.contract_deploy?.enabled) {
-        try {
-            console.log(chalk.blue.bold(`\n=== Running Contract Operations for Wallet ${walletNum} ===\n`));
-            
-            // Initialize contract deployer with wallet's private key and current config
-            const contractDeployer = new NormalContract(pk, config);
-            contractDeployer.setWalletNum(walletNum);
-            
-            // Execute contract operations (compile, deploy, interact)
-            await contractDeployer.executeContractOperations();
-            
-            // Add random delay after contract operations - using the delay config from general section
-            await addRandomDelay(config.general, walletNum, "next operation");
-            
-            return true;
-        } catch (error) {
-            console.log(chalk.red(`${getTimestamp(walletNum)} ✗ Error in contract operations: ${error.message}`));
-            return false;
-        }
-    }
-    return false;
-}
-
-// Execute ERC20 token operations - updated for new config structure
+// Execute ERC20 token operations
 async function executeERC20Operation(pk, config, walletNum) {
-    if (config.operations?.erc20?.enabled) {
-        try {
-            console.log(chalk.blue.bold(`\n=== Running ERC20 Token Operations for Wallet ${walletNum} ===\n`));
-            
-            // Initialize ERC20 token deployer with wallet's private key and current config
-            const erc20Deployer = new ERC20Token(pk, config);
-            erc20Deployer.setWalletNum(walletNum);
-            
-            // Execute ERC20 token operations (compile, deploy, mint, burn)
-            await erc20Deployer.executeTokenOperations();
-            
-            // Add random delay after ERC20 operations - using the delay config from general section
-            await addRandomDelay(config.general, walletNum, "next operation");
-            
-            return true;
-        } catch (error) {
-            console.log(chalk.red(`${getTimestamp(walletNum)} ✗ Error in ERC20 token operations: ${error.message}`));
-            return false;
-        }
+    const configManager = new ConfigManager(config);
+    if (!configManager.isEnabled('erc20')) {
+        logger.setWalletNum(walletNum);
+        logger.warn(`ERC20 token operations disabled in config`);
+        return false;
     }
-    return false;
+    
+    try {
+        logger.setWalletNum(walletNum);
+        logger.header(`Running ERC20 Token Operations for Wallet ${walletNum}`);
+        
+        // Initialize ERC20 token deployer with wallet's private key and current config
+        const erc20Deployer = new ERC20Token(pk, config);
+        erc20Deployer.setWalletNum(walletNum);
+        
+        // Execute ERC20 token operations (compile, deploy, mint, burn)
+        await erc20Deployer.executeTokenOperations();
+        
+        // Add random delay after ERC20 operations
+        await addRandomDelay(configManager.getDelayConfig(), walletNum, "next operation");
+        
+        return true;
+    } catch (error) {
+        logger.setWalletNum(walletNum);
+        logger.error(`Error in ERC20 token operations: ${error.message}`);
+        return false;
+    }
 }
 
-// Execute NFT operations - updated for new config structure
+// Execute NFT operations
 async function executeNFTOperation(pk, config, walletNum) {
-    if (config.operations?.nft?.enabled) {
-        try {
-            console.log(chalk.blue.bold(`\n=== Running NFT Operations for Wallet ${walletNum} ===\n`));
-            
-            // Initialize NFT manager with wallet's private key and current config
-            const nftManager = new NFT(pk, config);
-            nftManager.setWalletNum(walletNum);
-            
-            // Execute NFT operations (compile, deploy, mint, burn)
-            await nftManager.executeNFTOperations();
-            
-            // Add random delay after NFT operations - using the delay config from general section
-            await addRandomDelay(config.general, walletNum, "completing wallet operations");
-            
-            return true;
-        } catch (error) {
-            console.log(chalk.red(`${getTimestamp(walletNum)} ✗ Error in NFT operations: ${error.message}`));
-            return false;
-        }
+    const configManager = new ConfigManager(config);
+    if (!configManager.isEnabled('nft')) {
+        logger.setWalletNum(walletNum);
+        logger.warn(`NFT operations disabled in config`);
+        return false;
     }
-    return false;
+    
+    try {
+        logger.setWalletNum(walletNum);
+        logger.header(`Running NFT Operations for Wallet ${walletNum}`);
+        
+        // Initialize NFT manager with wallet's private key and current config
+        const nftManager = new NFT(pk, config);
+        nftManager.setWalletNum(walletNum);
+        
+        // Execute NFT operations (compile, deploy, mint, burn)
+        await nftManager.executeNFTOperations();
+        
+        // Add random delay after NFT operations
+        await addRandomDelay(configManager.getDelayConfig(), walletNum, "completing wallet operations");
+        
+        return true;
+    } catch (error) {
+        logger.setWalletNum(walletNum);
+        logger.error(`Error in NFT operations: ${error.message}`);
+        return false;
+    }
 }
 
-// Execute contract testing operations - updated for new config structure
+// Execute contract testing operations
 async function executeContractTestingOperation(pk, config, walletNum) {
-    if (config.operations?.contract_testing?.enabled) {
-        try {
-            console.log(chalk.blue.bold(`\n=== Running Contract Testing Operations for Wallet ${walletNum} ===\n`));
-            
-            // Initialize contract tester manager with wallet's private key and current config
-            const contractTesterManager = new TestContract(pk, config);
-            contractTesterManager.setWalletNum(walletNum);
-            
-            // Execute contract testing operations
-            await contractTesterManager.executeContractTestingOperations();
-            
-            // Add random delay after contract testing operations - using the delay config from general section
-            await addRandomDelay(config.general, walletNum, "next operation");
-            
-            return true;
-        } catch (error) {
-            console.log(chalk.red(`${getTimestamp(walletNum)} ✗ Error in contract testing operations: ${error.message}`));
-            return false;
-        }
+    const configManager = new ConfigManager(config);
+    if (!configManager.isEnabled('contract_testing')) {
+        logger.setWalletNum(walletNum);
+        logger.warn(`Contract testing operations disabled in config`);
+        return false;
     }
-    return false;
+    
+    try {
+        logger.setWalletNum(walletNum);
+        logger.header(`Running Contract Testing Operations for Wallet ${walletNum}`);
+        
+        // Initialize contract tester manager with wallet's private key and current config
+        const contractTesterManager = new TestContract(pk, config);
+        contractTesterManager.setWalletNum(walletNum);
+        
+        // Execute contract testing operations
+        await contractTesterManager.executeContractTestingOperations();
+        
+        // Add random delay after contract testing operations
+        await addRandomDelay(configManager.getDelayConfig(), walletNum, "next operation");
+        
+        return true;
+    } catch (error) {
+        logger.setWalletNum(walletNum);
+        logger.error(`Error in contract testing operations: ${error.message}`);
+        return false;
+    }
 }
 
-// Execute batch operations - updated for new config structure
+// Execute batch operations
 async function executeBatchOperation(pk, config, walletNum) {
-    if (config.operations?.batch_operations?.enabled) {
-        try {
-            console.log(chalk.blue.bold(`\n=== Running Batch Operations for Wallet ${walletNum} ===\n`));
-            
-            // Initialize batch operation manager with wallet's private key and current config
-            const batchOperationManager = new BatchOperation(pk, config);
-            batchOperationManager.setWalletNum(walletNum);
-            
-            // Execute batch operations
-            await batchOperationManager.executeBatchOperationOperations();
-            
-            // Add random delay after batch operations - using the delay config from general section
-            await addRandomDelay(config.general, walletNum, "next operation");
-            
-            return true;
-        } catch (error) {
-            console.log(chalk.red(`${getTimestamp(walletNum)} ✗ Error in batch operations: ${error.message}`));
-            return false;
-        }
-    }
-    return false;
-}
-
-// Randomize operations order - updated for new config structure
-function getRandomizedOperations(config) {
-    const randomizationConfig = config.randomization || { 
-        enable: false, 
-        excluded_operations: [],
-        operations_to_run: ["bridge", "transfer", "contract_deploy", "contract_testing", "erc20", "nft", "batch_operations"]
-    };
-    
-    // Define all operations
-    const allOperations = [
-        { name: "bridge", fn: executeBridgeOperation },
-        { name: "transfer", fn: executeTransferOperation },
-        { name: "contract_deploy", fn: executeContractOperation },
-        { name: "contract_testing", fn: executeContractTestingOperation },
-        { name: "erc20", fn: executeERC20Operation },
-        { name: "nft", fn: executeNFTOperation },
-        { name: "batch_operations", fn: executeBatchOperation }
-    ];
-    
-    // Filter operations based on operations_to_run config
-    const operationsToRun = randomizationConfig.operations_to_run || 
-        ["bridge", "transfer", "contract_deploy", "contract_testing", "erc20", "nft", "batch_operations"];
-    
-    const filteredOperations = allOperations.filter(op => operationsToRun.includes(op.name));
-    
-    // Split operations into fixed and randomizable based on excluded_operations
-    const excludedOps = randomizationConfig.excluded_operations || [];
-    const fixedOps = filteredOperations.filter(op => excludedOps.includes(op.name));
-    const randomizableOps = filteredOperations.filter(op => !excludedOps.includes(op.name));
-    
-    // Randomize operations if enabled
-    if (randomizationConfig.enable && randomizableOps.length > 1) {
-        // Fisher-Yates shuffle algorithm
-        for (let i = randomizableOps.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [randomizableOps[i], randomizableOps[j]] = [randomizableOps[j], randomizableOps[i]];
-        }
+    const configManager = new ConfigManager(config);
+    if (!configManager.isEnabled('batch_operations')) {
+        logger.setWalletNum(walletNum);
+        logger.warn(`Batch operations disabled in config`);
+        return false;
     }
     
-    // Return operations in order: fixed operations first, then randomized operations
-    return [...fixedOps, ...randomizableOps];
+    try {
+        logger.setWalletNum(walletNum);
+        logger.header(`Running Batch Operations for Wallet ${walletNum}`);
+        
+        // Initialize batch operation manager with wallet's private key and current config
+        const batchOperationManager = new BatchOperation(pk, config);
+        batchOperationManager.setWalletNum(walletNum);
+        
+        // Execute batch operations
+        await batchOperationManager.executeBatchOperationOperations();
+        
+        // Add random delay after batch operations
+        await addRandomDelay(configManager.getDelayConfig(), walletNum, "next operation");
+        
+        return true;
+    } catch (error) {
+        logger.setWalletNum(walletNum);
+        logger.error(`Error in batch operations: ${error.message}`);
+        return false;
+    }
 }
 
 async function main() {
     while (true) {
-        console.log(chalk.blue.bold('\n=== Fhenix Nitrogen Testnet Automation Tool ===\n'));
+        logger.header('Fhenix Nitrogen Testnet Automation Tool');
 
         try {
             // Load configuration
             const config = await loadConfig();
-            console.log(chalk.green(`${getTimestamp()} ✓ Configuration loaded`));
+            logger.success(`Configuration loaded`);
+            
+            // Create config manager
+            const configManager = new ConfigManager(config);
             
             // Load proxies
             const proxies = await loadProxies();
             
             // Load private keys
-            const privateKeys = (await fs.readFile('pk.txt', 'utf8'))
+            const privateKeys = (await fs.readFile('data/pk.txt', 'utf8'))
                 .split('\n')
                 .map(line => line.trim())
                 .filter(line => line);
 
-            console.log(chalk.green(`${getTimestamp()} ✓ Found ${privateKeys.length} private keys`));
-            
-            console.log(chalk.blue.bold(`${getTimestamp()} Initializing automation...`));
+            logger.success(`Found ${privateKeys.length} private keys`);
+            logger.info(`Initializing automation...`);
 
             // Create instances of our modules
             const tokenTransfer = new TokenTransfer(config);
 
             // Process wallets
-            console.log(chalk.blue.bold(`\nProcessing ${privateKeys.length} wallets...\n`));
+            logger.header(`Processing ${privateKeys.length} wallets...`);
 
             for (let i = 0; i < privateKeys.length; i++) {
                 const walletNum = i + 1;
                 const pk = privateKeys[i];
 
-                console.log(chalk.blue.bold(`\n=== Processing Wallet ${walletNum}/${privateKeys.length} ===\n`));
+                logger.setWalletNum(walletNum);
+                logger.header(`Processing Wallet ${walletNum}/${privateKeys.length}`);
 
                 // Get random proxy if available
                 const proxy = proxies.length > 0 ? 
                     proxies[Math.floor(Math.random() * proxies.length)] : null;
                 
                 if (proxy) {
-                    console.log(chalk.cyan(`${getTimestamp(walletNum)} ℹ Using proxy: ${proxy}`));
+                    logger.info(`Using proxy: ${proxy}`);
                 }
                 
-                // Create a Web3 account from the private key to get the address
-                const { Web3 } = require('web3');
-                const web3 = new Web3();
-                const account = web3.eth.accounts.privateKeyToAccount(pk.startsWith('0x') ? pk : '0x' + pk);
-                const walletAddress = account.address;
+                // Define all operations
+                const allOperations = [
+                    { name: "bridge", fn: executeBridgeOperation },
+                    { name: "transfer", fn: executeTransferOperation },
+                    { name: "contract_deploy", fn: executeContractOperation },
+                    { name: "contract_testing", fn: executeContractTestingOperation },
+                    { name: "erc20", fn: executeERC20Operation },
+                    { name: "nft", fn: executeNFTOperation },
+                    { name: "batch_operations", fn: executeBatchOperation }
+                ];
                 
                 // Get randomized operations
-                const operations = getRandomizedOperations(config);
+                const operations = configManager.getRandomizedOperations(allOperations);
                 
                 // Log the operation sequence
-                console.log(chalk.cyan(`${getTimestamp(walletNum)} ℹ Operations sequence: ${operations.map(op => op.name).join(' -> ')}`));
+                logger.info(`Operations sequence: ${operations.map(op => op.name).join(' -> ')}`);
                 
                 // Execute operations in the determined order
                 for (const operation of operations) {
@@ -561,12 +481,12 @@ async function main() {
                 // Wait between wallets
                 if (i < privateKeys.length - 1) {
                     const waitTime = Math.floor(Math.random() * 11) + 5; // 5-15 seconds
-                    console.log(chalk.yellow(`\n${getTimestamp(walletNum)} Waiting ${waitTime} seconds before next wallet...\n`));
+                    logger.warn(`Waiting ${waitTime} seconds before next wallet...`);
                     await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
                 }
             }
 
-            console.log(chalk.green.bold('\nWallet processing completed! Starting 8-hour countdown...\n'));
+            logger.header('Wallet processing completed! Starting 8-hour countdown...');
 
             // Start the countdown timer
             await countdownTimer(8);

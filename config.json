@@ -1,7 +1,7 @@
 {
   "operations": {
     "bridge": {
-      "enabled": true,
+      "enabled": false,
       "amount": {
         "min": 0.0001,
         "max": 0.0004,
@@ -10,7 +10,7 @@
       "repeat_times": 1
     },
     "transfer": {
-      "enabled": true,
+      "enabled": false,
       "use_percentage": false,
       "percentage": 90,
       "fixed_amount": {
@@ -25,9 +25,9 @@
       "repeat_times": 2
     },
     "contract_deploy": {
-      "enabled": true,
+      "enabled": false,
       "interactions": {
-        "enabled": true,
+        "enabled": false,
         "count": {
           "min": 3,
           "max": 8
@@ -36,7 +36,7 @@
       }
     },
     "contract_testing": {
-      "enabled": true,
+      "enabled": false,
       "test_sequences": ["parameter_variation", "stress_test", "boundary_test"],
       "iterations": {
         "min": 2,
@@ -44,12 +44,12 @@
       }
     },
     "random_contract": {
-      "enabled": true,
+      "enabled": false,
       "max_gas": 3000000,
       "repeat_times": 1
     },
     "random_token": {
-      "enabled": true,
+      "enabled": false,
       "max_gas": 3000000,
       "supply": {
         "min": 1000000,
@@ -58,7 +58,7 @@
       "repeat_times": 1
     },
     "erc20": {
-      "enabled": true,
+      "enabled": false,
       "mint_amount": {
         "min": 1000000,
         "max": 10000000
@@ -79,7 +79,7 @@
       }
     },
     "batch_operations": {
-      "enabled": true,
+      "enabled": false,
       "operations_per_batch": {
         "min": 2,
         "max": 3
@@ -87,16 +87,16 @@
     }
   },
   "general": {
-    "gas_price_multiplier": 1.2,
-    "max_retries": 5,
-    "base_wait_time": 5,
+    "gas_price_multiplier": 1,
+    "max_retries": 1,
+    "base_wait_time": 1,
     "delay": {
-      "min_seconds": 5,
-      "max_seconds": 30
+      "min_seconds": 1,
+      "max_seconds": 1
     }
   },
   "randomization": {
-    "enable": true,
+    "enable": false,
     "excluded_operations": ["bridge"],
     "operations_to_run": ["bridge", "transfer", "contract_deploy", "contract_testing", "erc20", "nft", "batch_operations", "random_contract", "random_token"]
   }
